@@ -5,6 +5,9 @@ import SnapKit
 import Then
 import UIKit
 
+// Keep UIKit's swipe-action titles in the same scale as the panel's labels.
+private let panelTextScale: CGFloat = 0.95
+
 /// The favourites, in the panel the path bar's current crumb opens.
 ///
 /// A menu is a list you can only tap: its rows have no long press and no
@@ -14,16 +17,16 @@ import UIKit
 /// reorder are `UICollectionView`'s interactive movement, the swipe is a list
 /// configuration's swipe actions, and this file animates neither.
 ///
-/// The width, the corner and the row heights are the menu's own, measured
-/// off it, so the panel reads as the list it replaced rather than as a new
-/// screen.
+/// The whole list is a little larger than the menu it replaced, including
+/// the system's swipe buttons; its gestures and transitions stay the same.
 final class PathFavoritesPanelViewController: UIViewController {
-    static let panelWidth: CGFloat = 232
-    private static let fixedRowHeight: CGFloat = 45
+    private static let contentScale: CGFloat = 1.12 * panelTextScale
+    static let panelWidth: CGFloat = 232 * 1.12
+    private static let fixedRowHeight: CGFloat = 42 / panelTextScale
     /// Rows on screen before the list scrolls: five, read as a list rather
     /// than as a page.
     private static let visibleFavouriteRows = 5
-    private static let cornerRadius: CGFloat = 14
+    private static let cornerRadius: CGFloat = 20
     private static let horizontalInset: CGFloat = 14
 
     private let directory: String
@@ -94,11 +97,17 @@ final class PathFavoritesPanelViewController: UIViewController {
 
         contentView.do {
             $0.backgroundColor = .clear
-            $0.layer.cornerRadius = Self.cornerRadius
+            $0.layer.cornerRadius = Self.cornerRadius / Self.contentScale
             $0.layer.cornerCurve = .continuous
             $0.clipsToBounds = true
+            // Scale inside the animated view so UIKit's swipe labels grow too.
+            $0.transform = CGAffineTransform(scaleX: Self.contentScale, y: Self.contentScale)
             view.addSubview($0)
-            $0.snp.makeConstraints { make in make.edges.equalToSuperview() }
+            $0.snp.makeConstraints { make in
+                make.center.equalToSuperview()
+                make.width.equalToSuperview().dividedBy(Self.contentScale)
+                make.height.equalToSuperview().dividedBy(Self.contentScale)
+            }
         }
         blurView.do {
             contentView.addSubview($0)
@@ -156,10 +165,11 @@ final class PathFavoritesPanelViewController: UIViewController {
         }
         preferredContentSize = CGSize(
             width: width,
-            height: min(height, screen.height * 0.72),
+            height: min(height * Self.contentScale, screen.height * 0.72),
         )
-        // A list longer than the rows it shows scrolls inside the panel.
-        collectionView.isScrollEnabled = favourites.count > Self.visibleFavouriteRows
+        // A short screen can clip the list even when it has five rows or fewer.
+        let listHeight = preferredContentSize.height / Self.contentScale - Self.fixedRowHeight * 2
+        collectionView.isScrollEnabled = favouriteRowHeight * CGFloat(favourites.count) > listHeight + 0.5
     }
 
     // MARK: - Rows
@@ -225,7 +235,7 @@ final class PathFavoritesPanelViewController: UIViewController {
         remove.backgroundColor = .systemRed
         let rename = UIContextualAction(
             style: .normal,
-            title: String(localized: "Rename"),
+            title: String(localized: "Rename Favorite"),
         ) { [weak self] _, _, done in
             guard let self else { return done(false) }
             promptRename(path)
@@ -240,13 +250,13 @@ final class PathFavoritesPanelViewController: UIViewController {
     private func promptRename(_ path: String) {
         let own = Self.folderName(path)
         let alert = AlertInputViewController(
-            title: String.LocalizationValue("Rename"),
+            title: String.LocalizationValue("Rename Favorite"),
             message: String.LocalizationValue(
                 "Enter the name this folder shows in this list. Clear the field to show the folder's own name.",
             ),
             placeholder: String.LocalizationValue("Name"),
             text: session.favoriteName(for: path) ?? own,
-            doneButtonText: String.LocalizationValue("Rename"),
+            doneButtonText: String.LocalizationValue("Rename Favorite"),
             onConfirm: { [weak self] name in
                 self?.session.renameFavorite(path, to: name)
                 self?.reload()
@@ -432,7 +442,7 @@ private final class PanelPresentationController: UIPresentationController {
 
 /// How tall a favourite's row is: a name, the path under it, and the folder
 /// picture the two fixed rows above the list also carry.
-private let favouriteRowHeight: CGFloat = 54
+private let favouriteRowHeight: CGFloat = 54 * 0.97 / panelTextScale
 
 /// A favourite, as a row of a system list: the folder picture on the leading
 /// edge, the name, the path under it. The stock list cell is used on purpose —
@@ -458,8 +468,8 @@ private final class PanelCell: UICollectionViewListCell {
     func configure(title: String, subtitle: String?, image: UIImage?) {
         var content = UIListContentConfiguration.subtitleCell()
         content.image = image
-        content.imageProperties.maximumSize = CGSize(width: 24, height: 24)
-        content.imageProperties.reservedLayoutSize = CGSize(width: 24, height: 24)
+        content.imageProperties.maximumSize = CGSize(width: 24 / panelTextScale, height: 24 / panelTextScale)
+        content.imageProperties.reservedLayoutSize = CGSize(width: 24 / panelTextScale, height: 24 / panelTextScale)
         content.text = title
         content.textProperties.font = UIFont.preferredFont(forTextStyle: .subheadline)
         content.textProperties.numberOfLines = 1
@@ -513,7 +523,7 @@ private final class PanelRowView: UIControl {
             make.centerY.equalToSuperview()
         }
         icon.snp.makeConstraints { make in
-            make.width.height.equalTo(20)
+            make.width.height.equalTo(20 / panelTextScale)
         }
         addSubview(separator)
         separator.snp.makeConstraints { make in
