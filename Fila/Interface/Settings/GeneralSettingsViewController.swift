@@ -26,7 +26,7 @@ final class GeneralSettingsViewController: UITableViewController {
     /// a sandboxed container has no bootstrap and no trash of this kind.
     /// Hidden presets stay so they can be turned back on; absent ones are
     /// not listed, and their saved order is kept for a launch that has them.
-    private static func offeredPresets() -> [LocalPreset] {
+    static func offeredPresets() -> [LocalPreset] {
         let local = FileSession.shared.local
         return local.orderedPresets.filter { preset in
             switch preset {
@@ -119,7 +119,7 @@ final class GeneralSettingsViewController: UITableViewController {
         switch Section(rawValue: indexPath.section) {
         case .presets:
             let preset = presets[indexPath.row]
-            title = name(of: preset)
+            title = Self.name(of: preset)
             enabled = session.local.isPresetEnabled(preset)
             update = { [session] enabled in
                 do { try session.local.setPreset(preset, enabled: enabled) }
@@ -210,7 +210,7 @@ final class GeneralSettingsViewController: UITableViewController {
         return cell
     }
 
-    private static func name(of location: LaunchLocation) -> String {
+    static func name(of location: LaunchLocation) -> String {
         switch location {
         case .root: String(localized: "Root")
         case .home: String(localized: "Home")
@@ -267,7 +267,7 @@ final class GeneralSettingsViewController: UITableViewController {
         catch { FilaLog.error("preset order not saved: \(error)") }
     }
 
-    private func name(of preset: LocalPreset) -> String {
+    static func name(of preset: LocalPreset) -> String {
         switch preset {
         case .root:
             if case .local(.container) = FileSession.shared.hello?.backend {

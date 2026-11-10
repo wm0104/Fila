@@ -644,10 +644,15 @@ final class FileActions {
         }
     }
 
+    private static var sharePreparations = 0
+    static var hasSharePreparation: Bool { sharePreparations > 0 }
+
     func share(_ paths: [String]) {
         guard let first = paths.first else { return }
         presenter?.setEditing(false, animated: true)
+        Self.sharePreparations += 1
         Task {
+            defer { Self.sharePreparations -= 1 }
             do {
                 let url = try await session.stage(first)
                 let directory = url.deletingLastPathComponent()

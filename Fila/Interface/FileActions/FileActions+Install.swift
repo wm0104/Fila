@@ -51,9 +51,13 @@ extension FileActions {
     /// spawned — dpkg included, between unpack and configure. That package
     /// goes through the system package manager or the device updater, never a
     /// terminal this daemon owns.
+    private static var packagePreparations = 0
+
     private func promptInstallPackage(_ path: String) {
         let name = (path as NSString).lastPathComponent
+        Self.packagePreparations += 1
         Task {
+            defer { Self.packagePreparations -= 1 }
             let staged: URL
             do { staged = try await session.stage(path) }
             catch { report(error); return }
@@ -92,6 +96,8 @@ extension FileActions {
     /// Keep package confirmations and installs serial across all file screens.
     /// Different paths can contain packages for the same application.
     private static var appInstallInFlight = false
+
+    static var hasActiveInstallation: Bool { appInstallInFlight || packagePreparations > 0 }
 
     /// Stages the copy first — the installer consumes what it is handed — and
     /// reads the manifest from that copy, so the card, the install and any

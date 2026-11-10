@@ -58,6 +58,11 @@ final class TabContainerViewController: UIViewController {
         installedTabID.flatMap { tabs[$0]?.navigation }
     }
 
+    /// Hidden tabs retain work even when their navigation is not a child on screen.
+    var retainedNavigations: [UINavigationController] {
+        tabs.values.map(\.navigation)
+    }
+
     /// Re-installs this window's own tab — the page the user is looking at
     /// — for the callers that need a live navigation and must not switch
     /// tabs: closing the overview without choosing, and a push or replace

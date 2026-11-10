@@ -57,6 +57,9 @@ public enum URLDownload {
         guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
             throw Failure.unsupportedScheme
         }
+        guard DownloadURL.parse(url.absoluteString) != nil else {
+            throw URLError(.badURL)
+        }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try StorageSpace.requireAvailable(at: FileManager.default.temporaryDirectory.path)
         try StorageSpace.requireAvailable(at: directory.path)

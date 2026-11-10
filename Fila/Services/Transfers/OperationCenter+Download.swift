@@ -18,23 +18,35 @@ extension OperationCenter {
             title: Kind.download.runningTitle,
             subtitle: name + " → " + directory,
             affected: [directory],
+            feedback: .successOnly,
         ) { report in
-            let staging = try await FileSession.shared.makeTemporaryDirectory()
-            defer { try? FileManager.default.removeItem(at: staging) }
+            do {
+                let staging = try await FileSession.shared.makeTemporaryDirectory()
+                defer { try? FileManager.default.removeItem(at: staging) }
 
-            let file = try await URLDownload.fetch(url, into: staging) { progress in
-                // `URLSession` reports from its own queue and the row lives on
-                // the main actor.
-                let update = JobProgress(
-                    bytesDone: progress.received,
-                    bytesTotal: max(0, progress.total),
-                    itemsDone: 0,
-                    itemsTotal: 0,
-                    currentPath: progress.name,
-                )
-                Task { @MainActor in report(update) }
+                let file = try await URLDownload.fetch(url, into: staging) { progress in
+                    // `URLSession` reports from its own queue and the row lives on
+                    // the main actor.
+                    let update = JobProgress(
+                        bytesDone: progress.received,
+                        bytesTotal: max(0, progress.total),
+                        itemsDone: 0,
+                        itemsTotal: 0,
+                        currentPath: progress.name,
+                    )
+                    Task { @MainActor in report(update) }
+                }
+                try await Self.place(file, into: directory)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // run() stores a generic FilaFailure for foreign errors. Show
+                // the download's reason before that conversion loses it.
+                if (error as? FilaFailure)?.code != .cancelled {
+                    FeedbackAlert.show(String(localized: "Operation Failed"), message: FailureMessage.text(for: error))
+                }
+                throw error
             }
-            try await Self.place(file, into: directory)
         }
     }
 

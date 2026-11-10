@@ -4,19 +4,17 @@ import SnapKit
 import Then
 import UIKit
 
-/// One search entry point: instant filtering of this folder, or a submitted subtree search.
+/// Name-only recursive search within the current directory or the active backend's root.
 final class SearchViewController: TabContentViewController {
     enum Scope {
         case folder
-        case subfolders
+        case entireSystem
     }
 
     private let root: String
     private let session = FileSession.shared
     private let initialQuery: String?
     private var scope: Scope
-    private var folderEntries: [FileNode]?
-    private var loadingFolderEntries: [FileNode] = []
     private var searchID = UUID()
     private var renderedQuery: String?
     private var renderedScope: Scope?
@@ -27,10 +25,11 @@ final class SearchViewController: TabContentViewController {
     private var interruptedQuery: String?
     private var query = ""
     private var isSearching = false
-    private var failure: String?
-    /// Links to directories the walk passed over. Nonzero means something
-    /// below this folder was not searched, and the footer says so.
-    private var skippedLinks = 0
+    private var summary = FileSearch.Summary()
+
+    private var searchRoot: String {
+        scope == .folder ? root : session.local.rootPath
+    }
     private var currentDirectory = ""
     private var lastProgressDraw = Date.distantPast
     private var lastHitsDraw = Date.distantPast
@@ -45,7 +44,7 @@ final class SearchViewController: TabContentViewController {
 
     private var magnifier: UIView?
 
-    init(root: String, query: String? = nil, scope: Scope = .subfolders) {
+    init(root: String, query: String? = nil, scope: Scope = .folder) {
         self.root = root
         initialQuery = query
         self.scope = scope
@@ -106,12 +105,11 @@ final class SearchViewController: TabContentViewController {
             collectionView.bottomEdgeEffect.style = .soft
         }
 
-        // This Folder finds everything in the folder the user just left, so a
-        // parent path under every row would repeat one fact per hit.
+        // Both scopes include descendants, so every hit needs its location.
         let cell = UICollectionView.CellRegistration<IconRowCell, FileSearchResult> { [weak self] cell, _, hit in
             cell.configure(
                 name: hit.node.name,
-                detail: self?.scope == .folder ? nil : FilePresentation.visibleName(hit.directory),
+                detail: FilePresentation.visibleName(hit.directory),
                 image: FilePresentation.image(for: hit.node),
                 highlight: self?.query,
             )
@@ -163,7 +161,7 @@ final class SearchViewController: TabContentViewController {
     private func resumeWalk() {
         if let query = interruptedQuery {
             start(query)
-        } else if walk != nil, scope == .subfolders {
+        } else if walk != nil {
             interruptOtherWalks()
         }
     }
@@ -191,8 +189,8 @@ final class SearchViewController: TabContentViewController {
 
     private func updateScopeMenu() {
         let options: [(Scope, String)] = [
-            (.folder, String(localized: "This Folder")),
-            (.subfolders, String(localized: "Subfolders")),
+            (.folder, String(localized: "Current Directory")),
+            (.entireSystem, String(localized: "Entire System")),
         ]
         let actions = options.map { option, title in
             UIAction(
@@ -214,7 +212,7 @@ final class SearchViewController: TabContentViewController {
         self.scope = scope
         updateScopeMenu()
         // A subtree walk is deliberate; switching the scope must not start one.
-        start(scope == .folder ? navigationItem.searchController?.searchBar.text ?? "" : "")
+        start("")
     }
 
     private func start(_ needle: String) {
@@ -223,84 +221,46 @@ final class SearchViewController: TabContentViewController {
         let searchID = UUID()
         self.searchID = searchID
         interruptedQuery = nil
-        loadingFolderEntries = []
         hits = []
         query = needle
-        failure = nil
-        skippedLinks = 0
-        currentDirectory = root
-        isSearching = scope == .folder ? folderEntries == nil : !needle.isEmpty
-        if scope == .folder, let folderEntries {
-            filterFolder(folderEntries)
-            return
-        }
+        summary = FileSearch.Summary()
+        let searchRoot = self.searchRoot
+        currentDirectory = searchRoot
+        isSearching = !needle.isEmpty
         apply()
         guard isSearching else { return }
-        if scope == .subfolders {
-            interruptOtherWalks()
-        }
-        walk = Task { [weak self, scope] in
+        interruptOtherWalks()
+        walk = Task { [weak self] in
             guard let self, !Task.isCancelled, self.searchID == searchID else { return }
-            if scope == .folder {
-                do {
-                    for try await page in DirectoryReader.pages(in: root, session: session) {
-                        guard !Task.isCancelled, self.searchID == searchID else { return }
-                        guard page.count <= DirectoryReader.maximumEntryCount - loadingFolderEntries.count else {
-                            throw FilaFailure(errno: E2BIG, path: root)
-                        }
-                        loadingFolderEntries.append(contentsOf: page)
-                        filterFolder(loadingFolderEntries)
-                    }
-                    guard !Task.isCancelled, self.searchID == searchID else { return }
-                    folderEntries = loadingFolderEntries
-                    loadingFolderEntries = []
-                } catch let failure as FilaFailure {
-                    guard !Task.isCancelled, self.searchID == searchID else { return }
-                    self.failure = FailureText.summary(for: failure)
-                } catch {}
-            } else {
-                let skipped = await FileSearch.run(
-                    root: root,
-                    needle: needle,
-                    session: session,
-                ) { directory in
-                    guard !Task.isCancelled, self.searchID == searchID else { return }
-                    self.currentDirectory = directory
-                    guard Date().timeIntervalSince(self.lastProgressDraw) > 0.2 else { return }
-                    self.lastProgressDraw = Date()
-                    self.updateStatus()
-                } onHit: { hit in
-                    guard !Task.isCancelled, self.searchID == searchID else { return }
-                    self.hits.append(hit)
-                    // By time, not by count: an apply costs by the rows already
-                    // listed, and thousands of hits a few at a time would spend
-                    // the main thread diffing the same list over and over.
-                    guard self.hits.count == 1 || Date().timeIntervalSince(self.lastHitsDraw) > 0.25 else { return }
-                    self.lastHitsDraw = Date()
-                    self.apply()
-                }
+            await FileSearch.run(
+                root: searchRoot,
+                needle: needle,
+                session: session,
+                onSummary: { summary in
+                    guard self.searchID == searchID else { return }
+                    self.summary = summary
+                },
+            ) { directory in
                 guard !Task.isCancelled, self.searchID == searchID else { return }
-                skippedLinks = skipped
+                self.currentDirectory = directory
+                guard Date().timeIntervalSince(self.lastProgressDraw) > 0.2 else { return }
+                self.lastProgressDraw = Date()
+                self.updateStatus()
+            } onHit: { hit in
+                guard !Task.isCancelled, self.searchID == searchID else { return }
+                self.hits.append(hit)
+                // By time, not by count: an apply costs by the rows already
+                // listed, and thousands of hits a few at a time would spend
+                // the main thread diffing the same list over and over.
+                guard self.hits.count == 1 || Date().timeIntervalSince(self.lastHitsDraw) > 0.25 else { return }
+                self.lastHitsDraw = Date()
+                self.apply()
             }
             guard !Task.isCancelled, self.searchID == searchID else { return }
             walk = nil
             isSearching = false
             apply()
         }
-    }
-
-    /// In the order the folder's own page shows: the arrangement dedups by
-    /// name, leaves hidden entries out unless they are shown, and sorts by
-    /// the browser's key — not in the order the directory was read.
-    private func filterFolder(_ entries: [FileNode]) {
-        let arrangement = FileArrangement(
-            showsHidden: session.showsHidden,
-            sortKey: session.sortKey,
-            ascending: session.sortAscending,
-        )
-        let matches = query.isEmpty ? [] : entries.filter { $0.name.localizedStandardContains(query) }
-        hits = arrangement.arrange(matches).map { FileSearchResult(directory: root, node: $0) }
-        apply()
     }
 
     private func apply() {
@@ -327,22 +287,37 @@ final class SearchViewController: TabContentViewController {
         updateStatus()
     }
 
-    /// What the list does not show: nil when it is complete. Only a subtree
-    /// walk can be cut short or pass over a link; This Folder lists everything.
-    private var footerText: String? {
-        guard scope == .subfolders, !hits.isEmpty else { return nil }
+    /// Shared by the existing footer and empty state, including zero-hit failures.
+    private var scopeNotes: String? {
         var lines: [String] = []
-        if hits.count >= FileSearch.resultLimit {
+        if scope == .entireSystem {
+            lines.append(
+                String(localized: "Searches only locations accessible to the current backend, starting at “\(searchRoot)”. No additional privileges are requested."),
+            )
+        }
+        if summary.isTruncated {
             lines.append(
                 String(localized: "Showing the first \(FileSearch.resultLimit) matches. Try a more specific name."),
             )
         }
-        if skippedLinks > 0 {
+        if summary.unreadableDirectories > 0 {
             lines.append(
-                String(localized: "Symbolic links were not followed, so items they point to were not searched."),
+                String(localized: "Could not fully read \(summary.unreadableDirectories) directories. Results may be incomplete."),
             )
         }
+        if summary.skippedLinks > 0 {
+            lines.append(
+                String(localized: "Skipped \(summary.skippedLinks) symbolic links; their targets were not searched."),
+            )
+        }
+        if summary.wasCancelled {
+            lines.append(String(localized: "Search was cancelled. Results may be incomplete."))
+        }
         return lines.isEmpty ? nil : lines.joined(separator: "\n")
+    }
+
+    private var footerText: String? {
+        hits.isEmpty ? nil : scopeNotes
     }
 
     private var hasFooterLayout = false
@@ -382,12 +357,12 @@ final class SearchViewController: TabContentViewController {
     }
 
     private func stopSearch() {
+        if isSearching { summary.wasCancelled = true }
         walk?.cancel()
         walk = nil
         searchID = UUID()
-        loadingFolderEntries = []
         isSearching = false
-        updateStatus()
+        apply()
     }
 
     /// One subtree walk per tab: the newest search's. A search pushed over
@@ -402,37 +377,30 @@ final class SearchViewController: TabContentViewController {
     }
 
     private func interruptWalk() {
-        guard walk != nil, scope == .subfolders else { return }
+        guard walk != nil else { return }
         stopSearch()
         interruptedQuery = query
     }
 
     private var status: StatusView.Content? {
         guard hits.isEmpty else { return nil }
-        if let failure {
-            return .message(
-                symbol: "exclamationmark.triangle",
-                title: String(localized: "Unable to Read Folder"),
-                detail: failure,
-            )
-        }
         if isSearching {
-            return .loading(String(localized: "Searching…"), detail: currentDirectory)
+            let detail = [currentDirectory, scopeNotes].compactMap { $0 }.joined(separator: "\n")
+            return .loading(String(localized: "Searching…"), detail: detail)
         }
         guard !query.isEmpty else {
+            let prompt = String(localized: "Enter a name, then tap Search to include all subfolders.")
+            let detail = [prompt, scopeNotes].compactMap { $0 }.joined(separator: "\n")
             return .message(
                 symbol: "magnifyingglass",
                 title: scope == .folder
-                    ? String(localized: "Search This Folder")
-                    : String(localized: "Search Subfolders"),
-                detail: scope == .subfolders
-                    ? String(localized: "Enter a name, then tap Search to include subfolders.")
-                    : nil,
+                    ? String(localized: "Search Current Directory")
+                    : String(localized: "Search Entire System"),
+                detail: detail,
             )
         }
-        let detail = scope == .folder
-            ? String(localized: "Nothing in this folder matches “\(query)”.")
-            : String(localized: "Nothing in this folder or its subfolders matches “\(query)”.")
+        let message = String(localized: "No matching names were found in the searched locations.")
+        let detail = [message, scopeNotes].compactMap { $0 }.joined(separator: "\n")
         return .message(symbol: "magnifyingglass", title: String(localized: "No Matches"), detail: detail)
     }
 }
@@ -453,21 +421,9 @@ extension SearchViewController: UISearchControllerDelegate {
 }
 
 extension SearchViewController: UISearchBarDelegate {
-    func searchBar(_: UISearchBar, textDidChange searchText: String) {
-        guard scope == .folder else {
-            start("")
-            return
-        }
-        query = searchText
-        if let folderEntries {
-            filterFolder(folderEntries)
-        } else if isSearching {
-            // Refilter the pages already received while the next one waits;
-            // widening the query must also bring their hidden matches back.
-            filterFolder(loadingFolderEntries)
-        } else {
-            start(searchText)
-        }
+    func searchBar(_: UISearchBar, textDidChange _: String) {
+        // Both scopes recurse; typing cancels stale work, Search submits a walk.
+        start("")
     }
 
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
@@ -523,7 +479,6 @@ extension SearchViewController: UICollectionViewDelegate {
             let actions = FileActions(presenter: self, directory: hit.directory) { [weak self] in
                 guard let self else { return }
                 hits.removeAll { $0 == hit }
-                folderEntries?.removeAll { $0 == hit.node }
                 apply()
             }
             return UIMenu(

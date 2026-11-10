@@ -805,6 +805,19 @@ struct ServerTests {
     }
 
     @Test
+    func `A successful HTML response is still a valid download`() async throws {
+        let harness = try await Harness()
+        let contents = "<!doctype html><title>Repository</title>"
+        harness.scratch.file("repository.html", contents: contents)
+        let staging = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fila-html-download-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: staging) }
+        let source = try #require(URL(string: "http://fila:s3cret@127.0.0.1:\(harness.port)/repository.html"))
+        let file = try await URLDownload.fetch(source, into: staging) { _ in }
+        #expect(try String(decoding: Data(contentsOf: file), as: UTF8.self) == contents)
+    }
+
+    @Test
     func `A download's name comes from the URL, and cannot be a path`() throws {
         #expect(try URLDownload.suggestedName(for: #require(URL(string: "http://x/a/b.zip"))) == "b.zip")
         #expect(try URLDownload.suggestedName(for: #require(URL(string: "http://x/"))) == "download")

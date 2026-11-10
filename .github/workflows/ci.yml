@@ -60,6 +60,8 @@ jobs:
         run: python3 -m unittest discover -s Scripts/Tests -v
       - name: Run host tests
         run: make harness
+      - name: Test app paged search
+        run: python3 Scripts/test-app-search.py
 
   # The two compositions are two cold builds of the same sources into two
   # DerivedData directories — neither reuses anything of the other's — so

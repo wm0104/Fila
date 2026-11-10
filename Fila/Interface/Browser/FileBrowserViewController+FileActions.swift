@@ -3,6 +3,7 @@ import FilaBackendKit
 import FilaBackendUI
 import FilaClient
 import FilaProtocol
+import FilaRemote
 import UIKit
 
 /// Browser navigation, selection, and transfer UI. File actions are shared
@@ -158,6 +159,7 @@ extension FileBrowserViewController {
                 image: UIImage(systemName: "arrow.right.circle"),
                 children: goMenuElements(),
             ),
+            ConfigurationBackupController.action(directory: directory, from: self),
             settingsMenuElement,
         ].compactMap { $0 }
         return FilaMenu.groups(actions, display, [folderAction], navigation)
@@ -405,13 +407,14 @@ extension FileBrowserViewController {
             title: String.LocalizationValue("Download from URL"),
             message: String.LocalizationValue("Enter an http or https URL. The file is saved in this folder."),
             placeholder: String.LocalizationValue("URL"),
-            initial: "https://",
+            initial: "",
             confirm: String.LocalizationValue("Download"),
         ) { [weak self] text in
-            guard let self,
-                  let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
-                  let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
-                  url.host?.isEmpty == false else { return }
+            guard let self else { return }
+            guard let url = DownloadURL.parse(text) else {
+                presentMessage(String(localized: "Operation Failed"), message: FailureMessage.text(for: URLError(.badURL)))
+                return
+            }
             let center = session.operations
             let operationID = center.download(url, into: directory)
             // Use the extraction card's delayed presentation and cancellation;

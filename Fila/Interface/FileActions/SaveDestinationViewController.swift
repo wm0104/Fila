@@ -17,6 +17,7 @@ final class SaveDestinationViewController: UIViewController {
         /// still answers with the folder being shown. For a symlink target.
         let picksFiles: Bool
         let fileTypes: Set<String>?
+        let filePickerTitle: String?
         let confirm: (URL) -> Void
 
         init(
@@ -25,6 +26,7 @@ final class SaveDestinationViewController: UIViewController {
             message: String?,
             picksFiles: Bool,
             fileTypes: Set<String>? = nil,
+            filePickerTitle: String? = nil,
             confirm: @escaping (URL) -> Void,
         ) {
             precondition(folderName == nil || fileName == nil)
@@ -33,6 +35,7 @@ final class SaveDestinationViewController: UIViewController {
             self.message = message
             self.picksFiles = picksFiles
             self.fileTypes = fileTypes
+            self.filePickerTitle = filePickerTitle
             self.confirm = confirm
         }
     }
@@ -102,6 +105,7 @@ final class SaveDestinationViewController: UIViewController {
         message: String? = nil,
         picksFiles: Bool = false,
         fileTypes: Set<String>? = nil,
+        filePickerTitle: String? = nil,
         link: any LocalFileAccess,
         confirm: @escaping (URL) -> Void,
     ) {
@@ -114,6 +118,7 @@ final class SaveDestinationViewController: UIViewController {
                 message: message,
                 picksFiles: picksFiles || fileTypes != nil,
                 fileTypes: fileTypes,
+                filePickerTitle: filePickerTitle,
                 confirm: confirm,
             ),
             isRoot: true,
@@ -125,8 +130,8 @@ final class SaveDestinationViewController: UIViewController {
         self.link = link
         self.selection = selection
         super.init(nibName: nil, bundle: nil)
-        title = selection.fileTypes != nil ? String(localized: "Choose Audio File")
-            : selection.picksFiles ? String(localized: "Choose Link Target") : String(localized: "Save To")
+        title = selection.filePickerTitle ?? (selection.fileTypes != nil ? String(localized: "Choose Audio File")
+            : selection.picksFiles ? String(localized: "Choose Link Target") : String(localized: "Save To"))
         navigationItem.largeTitleDisplayMode = .never
         navigationItem.backButtonDisplayMode = .minimal
         navigationItem.leftBarButtonItem = isRoot ? cancelItem : nil
@@ -357,7 +362,9 @@ final class SaveDestinationViewController: UIViewController {
                 if !folders.isEmpty {
                     list.backgroundView = nil
                 } else {
-                    let title: String = if selection.fileTypes != nil {
+                    let title: String = if selection.filePickerTitle != nil {
+                        String(localized: "No matching files. Choose a different folder.")
+                    } else if selection.fileTypes != nil {
                         String(localized: "No audio files. Choose a different folder.")
                     } else {
                         selection.picksFiles ? String(localized: "This folder is empty. You can still choose it.") : String(localized: "No subfolders. You can still save here.")

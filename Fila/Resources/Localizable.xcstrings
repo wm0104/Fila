@@ -1,6 +1,41 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Current Directory" : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "Current Directory"}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "当前目录"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "目前目錄"}}}},
+    "Entire System" : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "Entire System"}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "整个系统"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "整個系統"}}}},
+    "Search Current Directory" : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "Search Current Directory"}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "搜索当前目录"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "搜尋目前目錄"}}}},
+    "Search Entire System" : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "Search Entire System"}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "搜索整个系统"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "搜尋整個系統"}}}},
+    "Enter a name, then tap Search to include all subfolders." : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "Enter a name, then tap Search to include all subfolders."}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "输入名称后轻点“搜索”，包含所有层级的子文件夹。"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "輸入名稱後點一下「搜尋」，包含所有層級的子檔案夾。"}}}},
+    "No matching names were found in the searched locations." : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "No matching names were found in the searched locations."}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "在已搜索的位置中未找到匹配名称。"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "在已搜尋的位置中找不到符合的名稱。"}}}},
+    "Could not fully read %lld directories. Results may be incomplete." : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "Could not fully read %lld directories. Results may be incomplete."}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "无法完整读取 %lld 个目录，搜索结果可能不完整。"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "無法完整讀取 %lld 個目錄，搜尋結果可能不完整。"}}}},
+    "Skipped %lld symbolic links; their targets were not searched." : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "Skipped %lld symbolic links; their targets were not searched."}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "已跳过 %lld 个符号链接，未搜索它们指向的目标。"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "已略過 %lld 個符號連結，未搜尋它們指向的目標。"}}}},
+    "Search was cancelled. Results may be incomplete." : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "Search was cancelled. Results may be incomplete."}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "搜索已取消，结果可能不完整。"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "搜尋已取消，結果可能不完整。"}}}},
+    "Searches only locations accessible to the current backend, starting at “%@”. No additional privileges are requested." : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "Searches only locations accessible to the current backend, starting at “%@”. No additional privileges are requested."}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "从“%@”开始，仅搜索当前后端可访问的位置，不请求额外权限。"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "從「%@」開始，僅搜尋目前後端可存取的位置，不要求額外權限。"}}}},
+    "Reorder Places…" : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "Reorder Places…"}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "调整位置顺序…"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "調整位置順序⋯"}}}},
+    "Enter a complete http:// or https:// URL with one scheme and a server name." : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "Enter a complete http:// or https:// URL with one scheme and a server name."}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "请输入完整的 http:// 或 https:// 网址，包含服务器地址，且协议前缀不要重复。"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "請輸入完整的 http:// 或 https:// 網址，包含伺服器位址，且通訊協定前綴不要重複。"}}}},
+    "The server returned HTTP %ld. Check the download link and try again." : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "The server returned HTTP %ld. Check the download link and try again."}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "服务器返回 HTTP %ld，请检查下载链接后重试。"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "伺服器回傳 HTTP %ld，請檢查下載連結後再試。"}}}},
+    "The download finished without a file. Check the download link and try again." : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "The download finished without a file. Check the download link and try again."}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "下载已结束，但未收到文件，请检查下载链接后重试。"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "下載已結束，但未收到檔案，請檢查下載連結後再試。"}}}},
+    "The network is unavailable or access is restricted. Check your connection and Fila's cellular data access in Settings, then try again." : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "The network is unavailable or access is restricted. Check your connection and Fila's cellular data access in Settings, then try again."}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "网络不可用或访问受限，请检查网络连接及系统设置中 Fila 的蜂窝数据访问设置后重试。"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "網路無法使用或存取受限，請檢查網路連線及系統設定中 Fila 的行動數據存取設定後再試。"}}}},
+    "The server could not be reached. Check the server address and your connection, then try again." : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "The server could not be reached. Check the server address and your connection, then try again."}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "无法连接服务器，请检查服务器地址和网络连接后重试。"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "無法連接伺服器，請檢查伺服器位址和網路連線後再試。"}}}},
+    "The download timed out. Check your connection and try again." : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "The download timed out. Check your connection and try again."}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "下载超时，请检查网络连接后重试。"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "下載逾時，請檢查網路連線後再試。"}}}},
+    "A secure connection could not be established. Check the server's HTTPS address and certificate." : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "A secure connection could not be established. Check the server's HTTPS address and certificate."}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "无法建立安全连接，请检查服务器的 HTTPS 地址和证书。"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "無法建立安全連線，請檢查伺服器的 HTTPS 位址和憑證。"}}}},
+    "The network request failed (error %ld). Try again." : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "The network request failed (error %ld). Try again."}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "网络请求失败（错误 %ld），请重试。"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "網路要求失敗（錯誤 %ld），請再試。"}}}},
+    "No matching files. Choose a different folder." : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "No matching files. Choose a different folder."}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "没有匹配的文件，请选择其他文件夹。"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "沒有符合的檔案，請選擇其他檔案夾。"}}}},
+    "File sharing was used in this session. Finish transfers, stop sharing and reopen Fila before restoring configuration." : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "File sharing was used in this session. Finish transfers, stop sharing and reopen Fila before restoring configuration."}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "本次运行使用过文件共享。请完成传输、停止共享并重新打开 Fila，再恢复配置。"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "本次執行曾使用檔案共享。請完成傳輸、停止共享並重新開啟 Fila，再回復設定。"}}}},
+    "Back Up Configuration" : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "Back Up Configuration"}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "备份配置"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "備份設定"}}}},
+    "Restore Configuration" : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "Restore Configuration"}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "恢复配置"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "回復設定"}}}},
+    "Configuration Backed Up" : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "Configuration Backed Up"}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "备份成功"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "備份成功"}}}},
+    "The backup contains settings and favorites, not passwords or file contents." : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "The backup contains settings and favorites, not passwords or file contents."}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "备份包含设置和收藏，不包含密码或实际文件内容。"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "備份包含設定與收藏，不包含密碼或實際檔案內容。"}}}},
+    "Replace settings and favorites with this backup? Files, passwords and servers will not be changed. Browsing history is not backed up; restoring a disabled history setting clears recent entries. Fila must quit and reopen to apply it." : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "Replace settings and favorites with this backup? Files, passwords and servers will not be changed. Browsing history is not backed up; restoring a disabled history setting clears recent entries. Fila must quit and reopen to apply it."}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "是否用此备份覆盖当前设置和收藏？不会修改实际文件、密码或服务器资料。浏览历史不在备份内；若恢复为关闭“记录最近使用”，现有最近记录也会按原有规则清空。需要退出并重新打开 Fila 生效。"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "要以此備份取代目前設定與收藏嗎？不會修改實際檔案、密碼或伺服器資料。瀏覽記錄不在備份內；若回復為關閉「記錄最近使用」，現有最近記錄也會依原有規則清除。需要結束並重新開啟 Fila 才會生效。"}}}},
+    "Restore" : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "Restore"}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "恢复"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "回復"}}}},
+    "Configuration Restored" : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "Configuration Restored"}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "恢复成功"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "回復成功"}}}},
+    "Tap OK to quit Fila, then open it again to apply the restored configuration." : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "Tap OK to quit Fila, then open it again to apply the restored configuration."}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "点击“确定”退出 Fila，再手动打开，恢复的配置即可生效。"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "點一下「好」結束 Fila，再手動開啟，回復的設定即可生效。"}}}},
+    "Configuration Backup Failed" : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "Configuration Backup Failed"}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "配置备份操作失败"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "設定備份操作失敗"}}}},
+    "Configuration Restore Is Not Available" : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "Configuration Restore Is Not Available"}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "暂时无法恢复配置"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "暫時無法回復設定"}}}},
+    "Finish file tasks, stop file sharing, and save and close editors, installers and terminals in every window before restoring configuration." : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "Finish file tasks, stop file sharing, and save and close editors, installers and terminals in every window before restoring configuration."}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "请先完成文件任务、停止文件共享，并保存和关闭所有窗口中的编辑器、安装界面及终端，再恢复配置。"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "請先完成檔案作業、停止檔案共享，並儲存及關閉所有視窗中的編輯器、安裝介面與終端機，再回復設定。"}}}},
+    "The configuration backup is too large. The maximum size is 1 MB." : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "The configuration backup is too large. The maximum size is 1 MB."}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "配置备份过大，最大支持 1 MB。"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "設定備份過大，最大支援 1 MB。"}}}},
+    "The restored settings could not be saved. Keep your backup and try again." : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "The restored settings could not be saved. Keep your backup and try again."}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "无法保存恢复的设置。请保留备份文件，稍后重试。"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "無法儲存回復的設定。請保留備份檔案，稍後再試。"}}}},
+    "This is not a valid or supported Fila configuration backup. No backup settings were applied." : {"localizations" : {"en" : {"stringUnit" : {"state" : "translated", "value" : "This is not a valid or supported Fila configuration backup. No backup settings were applied."}}, "zh-Hans" : {"stringUnit" : {"state" : "translated", "value" : "这不是有效或受支持的 Fila 配置备份，未应用备份中的设置。"}}, "zh-Hant" : {"stringUnit" : {"state" : "translated", "value" : "這不是有效或受支援的 Fila 設定備份，未套用備份中的設定。"}}}},
     "This package is declared as %@, and packing keeps that label." : {
       "localizations" : {
         "en" : { "stringUnit" : { "state" : "translated", "value" : "This package is declared as %@, and packing keeps that label." } },
@@ -16955,88 +16990,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請為此檔案夾中的新項目輸入名稱。"
-          }
-        }
-      }
-    },
-    "Enter a name, then tap Search to include subfolders." : {
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "أدخل اسمًا، ثم اضغط على بحث لتضمين المجلدات الفرعية."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gib einen Namen ein und tippe auf „Suchen“, um Unterordner einzubeziehen."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Enter a name, then tap Search to include subfolders."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Introduce un nombre y toca Buscar para incluir las subcarpetas."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Saisissez un nom, puis touchez Rechercher pour inclure les sous-dossiers."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Inserisci un nome, poi tocca Cerca per includere le sottocartelle."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "名前を入力し、「検索」をタップするとサブフォルダも対象になります。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이름을 입력한 다음 검색을 탭하면 하위 폴더까지 검색합니다."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Digite um nome e toque em Buscar para incluir as subpastas."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Введите имя, затем нажмите «Поиск», чтобы включить вложенные папки."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hãy nhập tên, rồi chạm Tìm kiếm để tìm cả trong thư mục con."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请输入名称，然后轻点“搜索”以包含子文件夹。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "請輸入名稱，然後點一下「搜尋」以包含子檔案夾。"
           }
         }
       }
@@ -34614,171 +34567,6 @@
         }
       }
     },
-    "Nothing in this folder matches “%@”." : {
-      "comment" : "Detail under \"No Matches\" for the per-folder filter. %@ is what the user typed.",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "لا يوجد في هذا المجلد ما يطابق ”%@“."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nichts in diesem Ordner entspricht „%@“."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nothing in this folder matches “%@”."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nada de esta carpeta coincide con “%@”."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rien dans ce dossier ne correspond à « %@ »."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nessun elemento in questa cartella corrisponde a “%@”."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このフォルダに「%@」に一致する項目はありません。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 폴더에 “%@”과(와) 일치하는 항목이 없습니다."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nada nesta pasta corresponde a “%@”."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "В этой папке нет ничего, соответствующего «%@»."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Không có gì trong thư mục này khớp với “%@”."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此文件夹中没有与“%@”匹配的项目。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此檔案夾中沒有符合「%@」的項目。"
-          }
-        }
-      }
-    },
-    "Nothing in this folder or its subfolders matches “%@”." : {
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "لا يوجد في هذا المجلد أو مجلداته الفرعية ما يطابق ”%@“."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nichts in diesem Ordner oder seinen Unterordnern entspricht „%@“."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nothing in this folder or its subfolders matches “%@”."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nada de esta carpeta ni de sus subcarpetas coincide con “%@”."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rien dans ce dossier ni dans ses sous-dossiers ne correspond à « %@ »."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nessun elemento in questa cartella o nelle sue sottocartelle corrisponde a “%@”."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このフォルダとそのサブフォルダに「%@」に一致する項目はありません。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 폴더와 하위 폴더에 “%@”과(와) 일치하는 항목이 없습니다."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nada nesta pasta ou em suas subpastas corresponde a “%@”."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "В этой папке и во вложенных папках нет ничего, соответствующего «%@»."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Không có gì trong thư mục này hoặc các thư mục con của nó khớp với “%@”."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此文件夹及其子文件夹中没有与“%@”匹配的项目。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此檔案夾及其子檔案夾中沒有符合「%@」的項目。"
-          }
-        }
-      }
-    },
     "Nothing Logged Yet" : {
       "comment" : "Panel on the log screen when nothing has been recorded at all.",
       "localizations" : {
@@ -44108,170 +43896,6 @@
         }
       }
     },
-    "Search Subfolders" : {
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "البحث في المجلدات الفرعية"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Unterordner durchsuchen"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Search Subfolders"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Buscar en las subcarpetas"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rechercher dans les sous-dossiers"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cerca nelle sottocartelle"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "サブフォルダを検索"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "하위 폴더 검색"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Buscar em Subpastas"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Искать во вложенных папках"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tìm trong thư mục con"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "搜索子文件夹"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "搜尋子檔案夾"
-          }
-        }
-      }
-    },
-    "Search This Folder" : {
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "البحث في هذا المجلد"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diesen Ordner durchsuchen"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Search This Folder"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Buscar en esta carpeta"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rechercher dans ce dossier"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cerca in questa cartella"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このフォルダを検索"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 폴더 검색"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Buscar Nesta Pasta"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Искать в этой папке"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tìm trong thư mục này"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "搜索此文件夹"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "搜尋此檔案夾"
-          }
-        }
-      }
-    },
     "Searches a folder and its subfolders for names containing the text you enter." : {
       "localizations" : {
         "ar" : {
@@ -47820,88 +47444,6 @@
         }
       }
     },
-    "Subfolders" : {
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "المجلدات الفرعية"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Unterordner"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Subfolders"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Subcarpetas"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sous-dossiers"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sottocartelle"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "サブフォルダ"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "하위 폴더"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Subpastas"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Вложенные папки"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Thư mục con"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "子文件夹"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "子檔案夾"
-          }
-        }
-      }
-    },
     "Symbolic Link" : {
       "localizations" : {
         "ar" : {
@@ -47980,89 +47522,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "符號連結"
-          }
-        }
-      }
-    },
-    "Symbolic links were not followed, so items they point to were not searched." : {
-      "comment" : "Footer under subfolder search results when the walk passed over at least one link to a directory without entering it.",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "لم تُتبع الارتباطات الرمزية، لذا لم يشمل البحث العناصر التي تشير إليها."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Symbolischen Links wurde nicht gefolgt, daher wurden die Objekte, auf die sie zeigen, nicht durchsucht."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Symbolic links were not followed, so items they point to were not searched."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No se han seguido los enlaces simbólicos, así que no se ha buscado en los elementos a los que apuntan."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Les liens symboliques n’ont pas été suivis : les éléments vers lesquels ils pointent n’ont donc pas été explorés."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "I link simbolici non sono stati seguiti, quindi gli elementi a cui puntano non sono stati cercati."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "シンボリックリンクはたどっていないため、リンク先の項目は検索されていません。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "심볼릭 링크를 따라가지 않았으므로, 링크가 가리키는 항목은 검색되지 않았습니다."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Os links simbólicos não foram seguidos, portanto os itens para os quais eles apontam não foram buscados."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Символьные ссылки не раскрывались, поэтому объекты, на которые они указывают, не искались."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Các liên kết tượng trưng không được đi theo, nên những mục chúng trỏ tới không được tìm."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未跟随符号链接，因此未搜索链接指向的项目。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "並未跟隨符號連結，因此其指向的項目未納入搜尋。"
           }
         }
       }
@@ -52181,88 +51640,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此檔案在你開啟後已被變更。儲存會以你的變更覆蓋這些變更。"
-          }
-        }
-      }
-    },
-    "This Folder" : {
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "هذا المجلد"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dieser Ordner"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This Folder"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Esta carpeta"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ce dossier"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Questa cartella"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このフォルダ"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 폴더"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Esta Pasta"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Эта папка"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Thư mục này"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此文件夹"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此檔案夾"
           }
         }
       }

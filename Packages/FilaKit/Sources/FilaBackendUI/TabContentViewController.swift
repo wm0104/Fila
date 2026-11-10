@@ -212,9 +212,9 @@
         /// has no bar to hold it. Opened over this page's window.
         public var settingsMenuElement: UIMenuElement {
             UIMenu(options: .displayInline, children: [
-                UIAction(title: String(localized: "Settings", bundle: .module), image: UIImage(systemName: "gearshape")) { [weak self] _ in
-                    guard let self else { return }
-                    BackendScreens.shell?.presentSettings(from: self)
+                UIDeferredMenuElement.uncached { [weak self] done in
+                    guard let self, let shell = BackendScreens.shell else { return done([]) }
+                    done([shell.settingsMenu(from: self)])
                 },
             ])
         }

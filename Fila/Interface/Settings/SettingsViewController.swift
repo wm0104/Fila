@@ -25,6 +25,12 @@ final class SettingsViewController: UIViewController {
         fatalError("init(coder:) is not used")
     }
 
+    static func details() -> SettingsViewController {
+        SettingsViewController(page: .about)
+    }
+
+    static var appVersion: String { version(of: .main) }
+
     private enum Section: Hashable {
         case groups
         case operations
@@ -132,8 +138,29 @@ final class SettingsViewController: UIViewController {
             view.contentConfiguration = content
         }
 
+        let generalCell = UICollectionView.CellRegistration<UICollectionViewListCell, Row> { [weak self] cell, _, _ in
+            guard let self else { return }
+            var content = UIListContentConfiguration.cell()
+            content.text = String(localized: "General")
+            cell.contentConfiguration = content
+            // A transparent native button uses the ordinary row layout as its label.
+            let button: UIButton
+            if let existing = cell.contentView.subviews.compactMap({ $0 as? UIButton }).first {
+                button = existing
+            } else {
+                button = UIButton(type: .system)
+                cell.contentView.addSubview(button)
+                button.snp.makeConstraints { make in make.edges.equalToSuperview() }
+            }
+            button.accessibilityLabel = content.text
+            button.showsMenuAsPrimaryAction = true
+            button.menu = GeneralSettingsMenu.menu(from: self)
+            cell.isAccessibilityElement = false
+            cell.contentView.subviews.compactMap { $0 as? UIListContentView }.forEach { $0.isAccessibilityElement = false }
+        }
+
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) { collection, indexPath, row in
-            collection.dequeueConfiguredReusableCell(using: cell, for: indexPath, item: row)
+            collection.dequeueConfiguredReusableCell(using: row == .general ? generalCell : cell, for: indexPath, item: row)
         }
         dataSource.supplementaryViewProvider = { collection, kind, indexPath in
             switch kind {
@@ -176,7 +203,7 @@ final class SettingsViewController: UIViewController {
     private func configure(_ cell: UICollectionViewListCell, for row: Row) {
         switch row {
         case .general:
-            configureDisclosure(cell, title: String(localized: "General"))
+            break // Configured by its native menu-button cell registration.
         case .sharing:
             configureDisclosure(cell, title: String(localized: "File Sharing"))
         case .tasks:
@@ -316,7 +343,7 @@ extension SettingsViewController: UICollectionViewDelegate {
         if row == .tasks {
             return true
         }
-        return [.general, .sharing, .servers, .about, .license, .log].contains(row)
+        return [.sharing, .servers, .about, .license, .log].contains(row)
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
@@ -325,7 +352,7 @@ extension SettingsViewController: UICollectionViewDelegate {
         // a sheet over a sheet leaves either screen at half the height it needs.
         switch dataSource.itemIdentifier(for: indexPath) {
         case .general:
-            navigationController?.pushViewController(GeneralSettingsViewController(), animated: true)
+            break // Its native button opens the menu.
         case .sharing:
             navigationController?.pushViewController(FileSharingViewController(), animated: true)
         case .tasks:
