@@ -29,6 +29,24 @@ struct TextEncoding: Equatable {
         text.data(using: encoding).map { byteOrderMark + $0 }
     }
 
+    func byteCount(_ text: String) -> Int? {
+        guard text.canBeConverted(to: encoding) else { return nil }
+        return byteOrderMark.count + text.lengthOfBytes(using: encoding)
+    }
+
+    /// Preserve CRLF even when an edit inserted a bare LF.
+    static func restoringCRLF(_ text: String) -> String {
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(text.utf8.count)
+        var previous: UInt8 = 0
+        for byte in text.utf8 {
+            if byte == 10, previous != 13 { bytes.append(13) }
+            bytes.append(byte)
+            previous = byte
+        }
+        return String(decoding: bytes, as: UTF8.self)
+    }
+
     /// UTF-32 before UTF-16: `FF FE 00 00` begins both. A candidate that does
     /// not decode gives way to the next.
     private static let marks: [(bytes: [UInt8], encoding: String.Encoding)] = [

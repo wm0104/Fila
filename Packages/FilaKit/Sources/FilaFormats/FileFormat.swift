@@ -227,7 +227,7 @@ private func extensionMatch(_ name: String) -> FileFormat? {
     // is still found by its signature first.
     case "bin": return .binary
     case "txt", "md", "json", "log", "sh", "conf", "cfg", "ini", "yml", "yaml", "c", "h", "m",
-         "mm", "swift", "js", "py", "rb", "html", "css", "xml", "caml", "pl", "list": return .text
+         "mm", "swift", "js", "py", "rb", "html", "htm", "xhtml", "css", "xml", "caml", "pl", "list": return .text
     default: break
     }
 

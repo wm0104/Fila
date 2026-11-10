@@ -62,6 +62,8 @@ jobs:
         run: make harness
       - name: Test app paged search
         run: python3 Scripts/test-app-search.py
+      - name: Test app text matching and encoding
+        run: python3 Scripts/test-app-viewer.py
 
   # The two compositions are two cold builds of the same sources into two
   # DerivedData directories — neither reuses anything of the other's — so

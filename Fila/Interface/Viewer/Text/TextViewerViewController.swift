@@ -36,6 +36,11 @@ final class TextViewerViewController: TabContentViewController {
 
     let textView = RunestoneEditorView.new()
     let findBar = FindBar()
+    var matchesCase = false
+    var activeFindTerm: String?
+    var findResult: TextSearch.Result?
+    var findRefreshTask: Task<Void, Never>?
+    var canReplaceText: Bool { canEdit && isEditingFile && !isSaving }
     private var pendingNotice: String?
     /// A grammar the reader picked by hand for this document, by its name in
     /// `TextSyntax.choices`. Nil means the file's own detection decides.
@@ -108,6 +113,8 @@ final class TextViewerViewController: TabContentViewController {
         fatalError("init(coder:) is not used")
     }
 
+    deinit { findRefreshTask?.cancel() }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
@@ -133,6 +140,8 @@ final class TextViewerViewController: TabContentViewController {
         findBar.do {
             $0.isHidden = true
             $0.onFind = { [weak self] term, forwards in self?.find(term, forwards: forwards) }
+            $0.onTermChange = { [weak self] in self?.clearFindResult() }
+            $0.onReplace = { [weak self] term, replacement, all in self?.replace(term, with: replacement, all: all) }
             $0.onDismiss = { [weak self] in self?.toggleFind() }
         }
 
@@ -275,25 +284,6 @@ final class TextViewerViewController: TabContentViewController {
         return sawBreak && previous != 13
     }
 
-    /// `text` with every LF that has no CR before it written as CRLF. A file
-    /// that was all CRLF has no such LF of its own, so these are only the
-    /// breaks typed or pasted since: Runestone inserts LF and folds pasted CR
-    /// and CRLF into LF. Its own `.crlf` setting is not the answer — it
-    /// rewrites pasted text twice, and turns one pasted break into three.
-    private static func restoringCRLF(_ text: String) -> String {
-        var bytes: [UInt8] = []
-        bytes.reserveCapacity(text.utf8.count)
-        var previous: UInt8 = 0
-        for byte in text.utf8 {
-            if byte == 10, previous != 13 {
-                bytes.append(13)
-            }
-            bytes.append(byte)
-            previous = byte
-        }
-        return String(decoding: bytes, as: UTF8.self)
-    }
-
     // MARK: - Text state and theme
 
     /// Parses the text and hands it to the view in one go, which is what
@@ -307,6 +297,7 @@ final class TextViewerViewController: TabContentViewController {
             textView.setState(TextViewState(text: text, theme: theme))
         }
         textView.backgroundColor = theme.backgroundColor
+        refreshFindHighlights()
     }
 
     /// Tree-sitter parses the whole string before the first line is drawn.
@@ -347,6 +338,7 @@ final class TextViewerViewController: TabContentViewController {
         let theme = ScaledEditorTheme.theme(for: traitCollection)
         textView.theme = theme
         textView.backgroundColor = theme.backgroundColor
+        drawFindHighlights()
     }
 
     // MARK: - The bar, and the two modes
@@ -357,10 +349,11 @@ final class TextViewerViewController: TabContentViewController {
 
     /// This screen's half of the navigation bar. The container copies it onto
     /// the item the bar actually reads, so every change ends with a nudge.
-    private func refreshBarItems() {
+    func refreshBarItems() {
         let name = URL(fileURLWithPath: details.path).lastPathComponent
         navigationItem.title = name
         cancelItem.isEnabled = !isSaving
+        findBar.allowsReplacement = canReplaceText
 
         navigationItem.hidesBackButton = isEditingFile
         navigationItem.leftBarButtonItem = isEditingFile ? cancelItem : nil
@@ -394,6 +387,20 @@ final class TextViewerViewController: TabContentViewController {
             title: String(localized: "Find"),
             image: UIImage(systemName: "magnifyingglass"),
         ) { [weak self] _ in self?.toggleFind() }
+        let matchCase = UIAction(
+            title: String(localized: "Match Case"),
+            state: matchesCase ? .on : .off,
+        ) { [weak self] _ in
+            guard let self else { return }
+            matchesCase.toggle()
+            refreshFindHighlights()
+            refreshBarItems()
+        }
+        let undo = UIAction(
+            title: String(localized: "Undo"),
+            image: UIImage(systemName: "arrow.uturn.backward"),
+            attributes: canReplaceText && textView.undoManager?.canUndo == true ? [] : .disabled,
+        ) { [weak self] _ in self?.undoTextChange() }
         let wrap = UIAction(
             title: String(localized: "Wrap Lines"),
             // `text.word.spacing` is an iOS 16 symbol and draws nothing on 15.
@@ -446,7 +453,42 @@ final class TextViewerViewController: TabContentViewController {
                 ),
             ],
         )
-        return [find, wrap, highlight]
+        return [find, matchCase, undo, wrap, highlight]
+    }
+
+    private func undoTextChange() {
+        guard canReplaceText else { return }
+        textView.undoManager?.undo()
+        let text = usesCRLF ? TextEncoding.restoringCRLF(textView.text) : textView.text
+        hasUnsavedChanges = text != savedText
+        refreshFindHighlights()
+        refreshBarItems()
+    }
+
+    func validatedReplacement(_ ranges: [NSRange], with replacement: String) -> String? {
+        let limit = Int(ViewerLimits.editableTextByteCount)
+        // Bound the engine's UTF-8 allocation separately from the original on-disk encoding.
+        guard let text = TextSearch.replacing(textView.text, ranges: ranges, with: replacement, byteLimit: limit * 4) else {
+            replacementTooLarge()
+            return nil
+        }
+        let saved = usesCRLF ? TextEncoding.restoringCRLF(text) : text
+        guard let count = encoding.byteCount(saved) else {
+            presentMessage(
+                String(localized: "Unable to Replace"),
+                message: String(localized: "Some characters you typed cannot be saved in this file’s encoding. Remove them and try again."),
+            )
+            return nil
+        }
+        guard count <= limit else { replacementTooLarge(); return nil }
+        return text
+    }
+
+    private func replacementTooLarge() {
+        presentMessage(
+            String(localized: "Unable to Replace"),
+            message: String(localized: "Replacement would make the document too large to edit."),
+        )
     }
 
     private func startEditing() {
@@ -479,7 +521,7 @@ final class TextViewerViewController: TabContentViewController {
 
     private func save() {
         guard canEdit, !isSaving else { return }
-        let text = usesCRLF ? Self.restoringCRLF(textView.text) : textView.text
+        let text = usesCRLF ? TextEncoding.restoringCRLF(textView.text) : textView.text
         guard let data = encoding.encode(text) else {
             // Only reachable on a file that decoded as Latin-1: the user typed
             // something outside those 256 values. Refusing out loud, because a
@@ -550,7 +592,7 @@ final class TextViewerViewController: TabContentViewController {
                 context.dispose { leave() }
             }
         }
-        present(alert, animated: true)
+        TopPresenter.whenReady(from: navigationController ?? self) { $0.present(alert, animated: true) }
     }
 
     private func presentSaveFailure(_ error: Error) {
@@ -571,5 +613,6 @@ extension TextViewerViewController: UIAdaptivePresentationControllerDelegate {
 extension TextViewerViewController: TextViewDelegate {
     func textViewDidChange(_: TextView) {
         hasUnsavedChanges = true
+        refreshFindHighlights(inBackground: true)
     }
 }
