@@ -57,7 +57,7 @@ enum FileSearch {
         limit: Int = resultLimit,
         onSummary: (@MainActor (Summary) -> Void)? = nil,
         onVisit: @MainActor (String) -> Void,
-        onHit: @MainActor (FileSearchResult) -> Void,
+        onHit: @MainActor (FileSearchResult) async -> Void,
     ) async -> Int {
         var summary = Summary()
         defer {
@@ -115,7 +115,7 @@ enum FileSearch {
                             summary.skippedLinks += 1
                         }
                         if node.name.lowercased().contains(needle) {
-                            onHit(hit)
+                            await onHit(hit)
                             found += 1
                             if found >= limit {
                                 summary.isTruncated = true
@@ -145,5 +145,27 @@ enum FileSearch {
             }
         }
         return summary.skippedLinks
+    }
+}
+
+/// Only a result refresh hint; destructive paths are still validated by the backend.
+struct FileSearchChanges {
+    private var paths: Set<String> = []
+    private(set) var revision = 0
+
+    mutating func record(_ paths: [String]) {
+        self.paths.formUnion(paths)
+        revision += 1
+    }
+
+    func contains(_ path: String) -> Bool {
+        var candidate = path
+        while !candidate.isEmpty {
+            if paths.contains(candidate) { return true }
+            let parent = (candidate as NSString).deletingLastPathComponent
+            if parent == candidate { break }
+            candidate = parent
+        }
+        return false
     }
 }

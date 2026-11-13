@@ -33,6 +33,8 @@ final class PathFavoritesPanelViewController: UIViewController {
     private let open: (String) -> Void
     private let goToPath: () -> Void
     private let sourceRect: CGRect?
+    private let originRect: CGRect?
+    private let dismissalRect: () -> CGRect?
     private let session = FileSession.shared
 
     /// The rows in the user's order: the stored path and the name it shows.
@@ -70,9 +72,18 @@ final class PathFavoritesPanelViewController: UIViewController {
         }
     }()
 
-    init(directory: String, sourceRect: CGRect?, goToPath: @escaping () -> Void, open: @escaping (String) -> Void) {
+    init(
+        directory: String,
+        sourceRect: CGRect?,
+        originRect: CGRect?,
+        dismissalRect: @escaping () -> CGRect?,
+        goToPath: @escaping () -> Void,
+        open: @escaping (String) -> Void,
+    ) {
         self.directory = directory
         self.sourceRect = sourceRect
+        self.originRect = originRect
+        self.dismissalRect = dismissalRect
         self.goToPath = goToPath
         self.open = open
         super.init(nibName: nil, bundle: nil)
@@ -302,11 +313,9 @@ extension PathFavoritesPanelViewController: UICollectionViewDataSource {
 extension PathFavoritesPanelViewController: UICollectionViewDelegate {
     func collectionView(_: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         guard favourites.indices.contains(indexPath.row) else { return }
-        // Opened under the panel as it goes: waiting for the dismissal to
-        // finish made the row feel unresponsive.
         let path = favourites[indexPath.row].path
-        open(path)
-        dismiss(animated: true)
+        let open = self.open
+        dismiss(animated: true) { open(path) }
     }
 
     func collectionView(_: UICollectionView, moveItemAt source: IndexPath, to destination: IndexPath) {
@@ -323,8 +332,16 @@ extension PathFavoritesPanelViewController: UICollectionViewDelegate {
 // MARK: - Presentation
 
 extension PathFavoritesPanelViewController: UIViewControllerTransitioningDelegate {
+    func animationController(
+        forPresented _: UIViewController,
+        presenting _: UIViewController,
+        source _: UIViewController,
+    ) -> UIViewControllerAnimatedTransitioning? {
+        PanelAnimator(presenting: true)
+    }
+
     func animationController(forDismissed _: UIViewController) -> UIViewControllerAnimatedTransitioning? {
-        PanelDismissAnimator()
+        PanelAnimator(presenting: false)
     }
 
     func presentationController(
@@ -336,6 +353,8 @@ extension PathFavoritesPanelViewController: UIViewControllerTransitioningDelegat
             presentedViewController: presented,
             presenting: presenting,
             sourceRect: sourceRect,
+            originRect: originRect,
+            dismissalRect: dismissalRect,
         )
     }
 }
@@ -345,13 +364,23 @@ extension PathFavoritesPanelViewController: UIViewControllerTransitioningDelegat
 /// arrived.
 private final class PanelPresentationController: UIPresentationController {
     private let sourceRect: CGRect?
+    private let originRect: CGRect?
+    private let dismissalRect: () -> CGRect?
     private let dimmingView = UIView().then {
         $0.backgroundColor = UIColor.black.withAlphaComponent(0.2)
         $0.alpha = 0
     }
 
-    init(presentedViewController: UIViewController, presenting: UIViewController?, sourceRect: CGRect?) {
+    init(
+        presentedViewController: UIViewController,
+        presenting: UIViewController?,
+        sourceRect: CGRect?,
+        originRect: CGRect?,
+        dismissalRect: @escaping () -> CGRect?,
+    ) {
         self.sourceRect = sourceRect
+        self.originRect = originRect
+        self.dismissalRect = dismissalRect
         super.init(presentedViewController: presentedViewController, presenting: presenting)
     }
 
@@ -385,24 +414,19 @@ private final class PanelPresentationController: UIPresentationController {
         container.insertSubview(dimmingView, at: 0)
         dimmingView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(dismissPanel)))
 
-        guard let panel = presentedView else { return }
-        panel.frame = frameOfPresentedViewInContainerView
-        panel.alpha = 0
-        panel.transform = PanelTransition.arrival
         presentedViewController.transitionCoordinator?.animate(alongsideTransition: { _ in
             self.dimmingView.alpha = 1
         })
-        // One driver, not two: the panel travels on its own plain animation of
-        // the same length the departure uses, so the two directions match and
-        // nothing else animates the same view.
-        UIView.animate(
-            withDuration: PanelTransition.duration,
-            delay: 0,
-            options: [.curveEaseOut],
-        ) {
-            panel.alpha = 1
-            panel.transform = .identity
-        }
+    }
+
+    var transitionSourceRect: CGRect? {
+        guard let container = containerView else { return nil }
+        return (originRect ?? sourceRect).map { container.convert($0, from: nil) }
+    }
+
+    var dismissalSourceRect: CGRect? {
+        guard let container = containerView else { return nil }
+        return dismissalRect().map { container.convert($0, from: nil) }
     }
 
     override func dismissalTransitionWillBegin() {
@@ -421,15 +445,13 @@ private final class PanelPresentationController: UIPresentationController {
         }
     }
 
-    /// Set while the panel is leaving. A layout pass that sets `frame` on a
-    /// view carrying a transform clears the transform, which flattened the
-    /// exit animation into a single frame.
-    var isLeaving = false
+    // Frame layout must not clear a transform while either transition is running.
+    var isTransitioning = false
 
     override func containerViewDidLayoutSubviews() {
         super.containerViewDidLayoutSubviews()
         dimmingView.frame = containerView?.bounds ?? .zero
-        guard !isLeaving else { return }
+        guard !isTransitioning else { return }
         presentedView?.frame = frameOfPresentedViewInContainerView
     }
 
@@ -554,54 +576,84 @@ private final class PanelRowView: UIControl {
 }
 
 
-/// The panel arriving and leaving, in one place so the two cannot drift: the
-/// departure is the arrival played backwards — the same travel, the same
-/// scale, the same duration, the ease the other way round.
-private enum PanelTransition {
-    /// Slower than UIKit's default transition, which the panel used to arrive
-    /// on and which read as a snap next to the list behind it.
-    static let duration: TimeInterval = 0.5
-    /// Where the panel waits before it arrives, and where it goes back to.
-    /// Measured off the recording of the panel this replaces: it rises about a
-    /// hundred and twenty points, not the twenty-six the code used to say,
-    /// which is why closing looked like nothing happened.
-    static let arrival = CGAffineTransform(translationX: 0, y: 120)
-        .scaledBy(x: 0.94, y: 0.94)
-}
+/// UIKit owns the spring and the fade independently: text appears gradually,
+/// while the panel itself grows from (and returns to) the tapped path.
+private final class PanelAnimator: NSObject, UIViewControllerAnimatedTransitioning {
+    private let presenting: Bool
 
-/// The panel leaving: the arrival backwards, to the exact transform it grew
-/// from, so closing it is the same gesture as opening it.
-private final class PanelDismissAnimator: NSObject, UIViewControllerAnimatedTransitioning {
+    init(presenting: Bool) {
+        self.presenting = presenting
+        super.init()
+    }
+
     func transitionDuration(using _: UIViewControllerContextTransitioning?) -> TimeInterval {
-        PanelTransition.duration
+        PathFavoritesTransition.duration
     }
 
     func animateTransition(using context: UIViewControllerContextTransitioning) {
-        guard let panel = context.view(forKey: .from) else {
+        let key: UITransitionContextViewControllerKey = presenting ? .to : .from
+        let viewKey: UITransitionContextViewKey = presenting ? .to : .from
+        guard let controller = context.viewController(forKey: key), let panel = context.view(forKey: viewKey) else {
             context.completeTransition(false)
             return
         }
-        (context.viewController(forKey: .from)?.presentationController as? PanelPresentationController)?
-            .isLeaving = true
-        UIView.animate(
-            withDuration: transitionDuration(using: context),
-            delay: 0,
-            options: [.curveEaseIn],
-        ) {
+        let presentation = controller.presentationController as? PanelPresentationController
+        if presenting {
+            panel.frame = context.finalFrame(for: controller)
+            context.containerView.addSubview(panel)
+        }
+        let source = presenting ? presentation?.transitionSourceRect
+            : (presentation?.dismissalSourceRect ?? presentation?.transitionSourceRect)
+        let originalFrame = panel.frame
+        let originalSuperview = panel.superview
+        let originalIndex = originalSuperview?.subviews.firstIndex(of: panel) ?? 0
+        let frame = panel.convert(panel.bounds, to: context.containerView)
+        let shadowPadding = panel.layer.shadowRadius * 2
+            + max(abs(panel.layer.shadowOffset.width), abs(panel.layer.shadowOffset.height))
+        let collapsed = presenting
+            ? PathFavoritesTransition.collapsed(frame: frame, source: source)
+            : PathFavoritesTransition.dismissal(frame: frame, source: source, shadowPadding: shadowPadding)
+        presentation?.isTransitioning = true
+        var clippingView: UIView?
+        if !presenting, let source, originalSuperview != nil {
+            // Clip only the moving panel and its shadow, never the path or dimming view.
+            let clipping = UIView(frame: PathFavoritesTransition.dismissalClip(in: context.containerView.bounds, source: source))
+            clipping.clipsToBounds = true
+            context.containerView.addSubview(clipping)
+            let localFrame = panel.convert(panel.bounds, to: clipping)
+            clipping.addSubview(panel)
+            panel.frame = localFrame
+            clippingView = clipping
+        }
+        if presenting {
+            panel.transform = collapsed
             panel.alpha = 0
-            // All the way down past the bottom edge, so it visibly leaves
-            // rather than dimming in place.
-            // Its own height plus a margin: the panel is anchored near the
-            // bottom, so this always puts it fully below the screen. The old
-            // sum used the view's transformed frame and came out negative,
-            // which sent it upwards instead.
-            let drop = panel.bounds.height + 400
-            panel.transform = CGAffineTransform(translationX: 0, y: drop)
+        }
+        let duration = transitionDuration(using: context)
+        UIView.animate(
+            withDuration: duration,
+            delay: 0,
+            usingSpringWithDamping: presenting ? 0.8 : 0.9,
+            initialSpringVelocity: 0,
+            options: [.beginFromCurrentState],
+        ) {
+            panel.transform = self.presenting ? .identity : collapsed
         } completion: { _ in
-            // The view is reused when a dismissal is cancelled mid-flight.
-            panel.transform = .identity
-            panel.alpha = 1
+            if let clippingView, let originalSuperview {
+                panel.transform = .identity
+                originalSuperview.insertSubview(panel, at: min(originalIndex, originalSuperview.subviews.count))
+                panel.frame = originalFrame
+                clippingView.removeFromSuperview()
+            }
+            if context.transitionWasCancelled {
+                panel.transform = .identity
+                panel.alpha = 1
+            }
+            presentation?.isTransitioning = false
             context.completeTransition(!context.transitionWasCancelled)
+        }
+        UIView.animate(withDuration: duration, delay: 0, options: [.curveEaseOut]) {
+            panel.alpha = self.presenting ? 1 : 0
         }
     }
 }

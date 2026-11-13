@@ -1,9 +1,17 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Plugin Name" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Plugin Name"}}, "ar": {"stringUnit": {"state": "translated", "value": "اسم الإضافة"}}, "de": {"stringUnit": {"state": "translated", "value": "Plugin-Name"}}, "es": {"stringUnit": {"state": "translated", "value": "Nombre del complemento"}}, "fr": {"stringUnit": {"state": "translated", "value": "Nom du module"}}, "it": {"stringUnit": {"state": "translated", "value": "Nome del plugin"}}, "ja": {"stringUnit": {"state": "translated", "value": "プラグイン名"}}, "ko": {"stringUnit": {"state": "translated", "value": "플러그인 이름"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "Nome do plugin"}}, "ru": {"stringUnit": {"state": "translated", "value": "Название плагина"}}, "vi": {"stringUnit": {"state": "translated", "value": "Tên plugin"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "插件名称"}}, "zh-Hant": {"stringUnit": {"state": "translated", "value": "外掛名稱"}}}},
+    "Category" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Category"}}, "ar": {"stringUnit": {"state": "translated", "value": "الفئة"}}, "de": {"stringUnit": {"state": "translated", "value": "Kategorie"}}, "es": {"stringUnit": {"state": "translated", "value": "Categoría"}}, "fr": {"stringUnit": {"state": "translated", "value": "Catégorie"}}, "it": {"stringUnit": {"state": "translated", "value": "Categoria"}}, "ja": {"stringUnit": {"state": "translated", "value": "カテゴリ"}}, "ko": {"stringUnit": {"state": "translated", "value": "분류"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "Categoria"}}, "ru": {"stringUnit": {"state": "translated", "value": "Категория"}}, "vi": {"stringUnit": {"state": "translated", "value": "Danh mục"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "分类"}}, "zh-Hant": {"stringUnit": {"state": "translated", "value": "分類"}}}},
+    "Author Information" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Author Information"}}, "ar": {"stringUnit": {"state": "translated", "value": "معلومات المؤلف"}}, "de": {"stringUnit": {"state": "translated", "value": "Autoreninformationen"}}, "es": {"stringUnit": {"state": "translated", "value": "Información del autor"}}, "fr": {"stringUnit": {"state": "translated", "value": "Informations sur l’auteur"}}, "it": {"stringUnit": {"state": "translated", "value": "Informazioni sull’autore"}}, "ja": {"stringUnit": {"state": "translated", "value": "作者情報"}}, "ko": {"stringUnit": {"state": "translated", "value": "작성자 정보"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "Informações do autor"}}, "ru": {"stringUnit": {"state": "translated", "value": "Сведения об авторе"}}, "vi": {"stringUnit": {"state": "translated", "value": "Thông tin tác giả"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "作者信息"}}, "zh-Hant": {"stringUnit": {"state": "translated", "value": "作者資訊"}}}},
+    "Author" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Author"}}, "ar": {"stringUnit": {"state": "translated", "value": "المؤلف"}}, "de": {"stringUnit": {"state": "translated", "value": "Autor"}}, "es": {"stringUnit": {"state": "translated", "value": "Autor"}}, "fr": {"stringUnit": {"state": "translated", "value": "Auteur"}}, "it": {"stringUnit": {"state": "translated", "value": "Autore"}}, "ja": {"stringUnit": {"state": "translated", "value": "作者"}}, "ko": {"stringUnit": {"state": "translated", "value": "작성자"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "Autor"}}, "ru": {"stringUnit": {"state": "translated", "value": "Автор"}}, "vi": {"stringUnit": {"state": "translated", "value": "Tác giả"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "作者"}}, "zh-Hant": {"stringUnit": {"state": "translated", "value": "作者"}}}},
+    "Maintainer" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Maintainer"}}, "ar": {"stringUnit": {"state": "translated", "value": "المشرف"}}, "de": {"stringUnit": {"state": "translated", "value": "Betreuer"}}, "es": {"stringUnit": {"state": "translated", "value": "Responsable"}}, "fr": {"stringUnit": {"state": "translated", "value": "Responsable"}}, "it": {"stringUnit": {"state": "translated", "value": "Manutentore"}}, "ja": {"stringUnit": {"state": "translated", "value": "メンテナ"}}, "ko": {"stringUnit": {"state": "translated", "value": "관리자"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "Mantenedor"}}, "ru": {"stringUnit": {"state": "translated", "value": "Сопровождающий"}}, "vi": {"stringUnit": {"state": "translated", "value": "Người duy trì"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "维护者"}}, "zh-Hant": {"stringUnit": {"state": "translated", "value": "維護者"}}}},
+    "Plugin Homepage" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Plugin Homepage"}}, "ar": {"stringUnit": {"state": "translated", "value": "الصفحة الرئيسية للإضافة"}}, "de": {"stringUnit": {"state": "translated", "value": "Plugin-Website"}}, "es": {"stringUnit": {"state": "translated", "value": "Sitio web del complemento"}}, "fr": {"stringUnit": {"state": "translated", "value": "Site du module"}}, "it": {"stringUnit": {"state": "translated", "value": "Sito del plugin"}}, "ja": {"stringUnit": {"state": "translated", "value": "プラグインのホームページ"}}, "ko": {"stringUnit": {"state": "translated", "value": "플러그인 홈페이지"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "Site do plugin"}}, "ru": {"stringUnit": {"state": "translated", "value": "Сайт плагина"}}, "vi": {"stringUnit": {"state": "translated", "value": "Trang chủ plugin"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "插件主页"}}, "zh-Hant": {"stringUnit": {"state": "translated", "value": "外掛首頁"}}}},
+    "Plugin Details" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Plugin Details"}}, "ar": {"stringUnit": {"state": "translated", "value": "تفاصيل الإضافة"}}, "de": {"stringUnit": {"state": "translated", "value": "Plugin-Details"}}, "es": {"stringUnit": {"state": "translated", "value": "Detalles del complemento"}}, "fr": {"stringUnit": {"state": "translated", "value": "Détails du module"}}, "it": {"stringUnit": {"state": "translated", "value": "Dettagli del plugin"}}, "ja": {"stringUnit": {"state": "translated", "value": "プラグインの詳細"}}, "ko": {"stringUnit": {"state": "translated", "value": "플러그인 세부 정보"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "Detalhes do plugin"}}, "ru": {"stringUnit": {"state": "translated", "value": "Сведения о плагине"}}, "vi": {"stringUnit": {"state": "translated", "value": "Chi tiết plugin"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "插件详细"}}, "zh-Hant": {"stringUnit": {"state": "translated", "value": "外掛詳細資訊"}}}},
+    "Enter plugin information on a single line without control characters." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Enter plugin information on a single line without control characters."}}, "ar": {"stringUnit": {"state": "translated", "value": "أدخل معلومات الإضافة في سطر واحد دون أحرف تحكم."}}, "de": {"stringUnit": {"state": "translated", "value": "Gib die Plugin-Informationen in einer Zeile ohne Steuerzeichen ein."}}, "es": {"stringUnit": {"state": "translated", "value": "Introduce la información del complemento en una sola línea sin caracteres de control."}}, "fr": {"stringUnit": {"state": "translated", "value": "Saisissez les informations du module sur une seule ligne, sans caractères de contrôle."}}, "it": {"stringUnit": {"state": "translated", "value": "Inserisci le informazioni del plugin su una sola riga senza caratteri di controllo."}}, "ja": {"stringUnit": {"state": "translated", "value": "プラグイン情報は制御文字を含めず、1行で入力してください。"}}, "ko": {"stringUnit": {"state": "translated", "value": "제어 문자 없이 플러그인 정보를 한 줄로 입력하세요."}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "Insira as informações do plugin em uma única linha, sem caracteres de controle."}}, "ru": {"stringUnit": {"state": "translated", "value": "Введите сведения о плагине в одну строку без управляющих символов."}}, "vi": {"stringUnit": {"state": "translated", "value": "Nhập thông tin plugin trên một dòng, không có ký tự điều khiển."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "插件信息请填写为单行，不要包含控制字符。"}}, "zh-Hant": {"stringUnit": {"state": "translated", "value": "外掛資訊請填寫為單行，不要包含控制字元。"}}}},
+    "Enter an HTTP or HTTPS plugin homepage link." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Enter an HTTP or HTTPS plugin homepage link."}}, "ar": {"stringUnit": {"state": "translated", "value": "أدخل رابط HTTP أو HTTPS للصفحة الرئيسية للإضافة."}}, "de": {"stringUnit": {"state": "translated", "value": "Gib einen HTTP- oder HTTPS-Link zur Plugin-Website ein."}}, "es": {"stringUnit": {"state": "translated", "value": "Introduce un enlace HTTP o HTTPS al sitio web del complemento."}}, "fr": {"stringUnit": {"state": "translated", "value": "Saisissez un lien HTTP ou HTTPS vers le site du module."}}, "it": {"stringUnit": {"state": "translated", "value": "Inserisci un collegamento HTTP o HTTPS al sito del plugin."}}, "ja": {"stringUnit": {"state": "translated", "value": "プラグインのホームページのHTTPまたはHTTPSリンクを入力してください。"}}, "ko": {"stringUnit": {"state": "translated", "value": "HTTP 또는 HTTPS 플러그인 홈페이지 링크를 입력하세요."}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "Insira um link HTTP ou HTTPS para o site do plugin."}}, "ru": {"stringUnit": {"state": "translated", "value": "Введите HTTP- или HTTPS-ссылку на сайт плагина."}}, "vi": {"stringUnit": {"state": "translated", "value": "Nhập liên kết HTTP hoặc HTTPS đến trang chủ plugin."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "请输入 HTTP 或 HTTPS 格式的插件主页链接。"}}, "zh-Hant": {"stringUnit": {"state": "translated", "value": "請輸入 HTTP 或 HTTPS 格式的外掛首頁連結。"}}}},
     "Opens a copy of “%@” in TrollStore. The original file is kept." : {"localizations": {"ar": {"stringUnit": {"state": "translated", "value": "يفتح نسخة من “%@” في TrollStore مع الاحتفاظ بالملف الأصلي."}}, "de": {"stringUnit": {"state": "translated", "value": "Öffnet eine Kopie von „%@“ in TrollStore. Die Originaldatei bleibt erhalten."}}, "en": {"stringUnit": {"state": "translated", "value": "Opens a copy of “%@” in TrollStore. The original file is kept."}}, "es": {"stringUnit": {"state": "translated", "value": "Abre una copia de “%@” en TrollStore. Se conserva el archivo original."}}, "fr": {"stringUnit": {"state": "translated", "value": "Ouvre une copie de « %@ » dans TrollStore. Le fichier original est conservé."}}, "it": {"stringUnit": {"state": "translated", "value": "Apre una copia di “%@” in TrollStore. Il file originale viene conservato."}}, "ja": {"stringUnit": {"state": "translated", "value": "「%@」のコピーをTrollStoreで開きます。元のファイルは保持されます。"}}, "ko": {"stringUnit": {"state": "translated", "value": "“%@”의 복사본을 TrollStore에서 엽니다. 원본 파일은 유지됩니다."}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "Abre uma cópia de “%@” no TrollStore. O arquivo original é mantido."}}, "ru": {"stringUnit": {"state": "translated", "value": "Открывает копию «%@» в TrollStore. Исходный файл сохраняется."}}, "vi": {"stringUnit": {"state": "translated", "value": "Mở bản sao của “%@” bằng TrollStore. Tệp gốc được giữ lại."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "将“%@”的副本交给 TrollStore 打开，原文件保持不变。"}}, "zh-Hant": {"stringUnit": {"state": "translated", "value": "將「%@」的副本交給 TrollStore 開啟，原始檔案保持不變。"}}}},
     "TrollStore did not confirm opening the file. The copy is kept at %@. Check TrollStore before trying again." : {"localizations": {"ar": {"stringUnit": {"state": "translated", "value": "لم يؤكد TrollStore فتح الملف. النسخة محفوظة في %@. تحقق من TrollStore قبل المحاولة مجددًا."}}, "de": {"stringUnit": {"state": "translated", "value": "TrollStore hat das Öffnen nicht bestätigt. Die Kopie bleibt unter %@ erhalten. Prüfe TrollStore vor einem erneuten Versuch."}}, "en": {"stringUnit": {"state": "translated", "value": "TrollStore did not confirm opening the file. The copy is kept at %@. Check TrollStore before trying again."}}, "es": {"stringUnit": {"state": "translated", "value": "TrollStore no confirmó la apertura. La copia se conserva en %@. Comprueba TrollStore antes de intentarlo de nuevo."}}, "fr": {"stringUnit": {"state": "translated", "value": "TrollStore n’a pas confirmé l’ouverture. La copie est conservée à %@. Vérifiez TrollStore avant de réessayer."}}, "it": {"stringUnit": {"state": "translated", "value": "TrollStore non ha confermato l’apertura. La copia è conservata in %@. Controlla TrollStore prima di riprovare."}}, "ja": {"stringUnit": {"state": "translated", "value": "TrollStoreでの起動を確認できませんでした。コピーは%@に保持されています。再試行する前にTrollStoreを確認してください。"}}, "ko": {"stringUnit": {"state": "translated", "value": "TrollStore가 파일 열기를 확인하지 않았습니다. 복사본은 %@에 보관됩니다. 다시 시도하기 전에 TrollStore를 확인하세요."}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "O TrollStore não confirmou a abertura. A cópia permanece em %@. Verifique o TrollStore antes de tentar novamente."}}, "ru": {"stringUnit": {"state": "translated", "value": "TrollStore не подтвердил открытие файла. Копия сохранена в %@. Проверьте TrollStore перед повторной попыткой."}}, "vi": {"stringUnit": {"state": "translated", "value": "TrollStore chưa xác nhận mở tệp. Bản sao được giữ tại %@. Kiểm tra TrollStore trước khi thử lại."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "尚未收到 TrollStore 打开文件的确认，副本保留在 %@。请先查看 TrollStore，再决定是否重试。"}}, "zh-Hant": {"stringUnit": {"state": "translated", "value": "尚未收到 TrollStore 開啟檔案的確認，副本保留在 %@。請先查看 TrollStore，再決定是否重試。"}}}},
-    "Architecture" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Architecture"}}, "ar": {"stringUnit": {"state": "translated", "value": "المعمارية"}}, "de": {"stringUnit": {"state": "translated", "value": "Architektur"}}, "es": {"stringUnit": {"state": "translated", "value": "Arquitectura"}}, "fr": {"stringUnit": {"state": "translated", "value": "Architecture"}}, "it": {"stringUnit": {"state": "translated", "value": "Architettura"}}, "ja": {"stringUnit": {"state": "translated", "value": "アーキテクチャ"}}, "ko": {"stringUnit": {"state": "translated", "value": "아키텍처"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "Arquitetura"}}, "ru": {"stringUnit": {"state": "translated", "value": "Архитектура"}}, "vi": {"stringUnit": {"state": "translated", "value": "Kiến trúc"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "架构"}}, "zh-Hant": {"stringUnit": {"state": "translated", "value": "架構"}}}},
     "A description line cannot contain only whitespace or a single dot. Use an empty line for a paragraph break." : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "A description line cannot contain only whitespace or a single dot. Use an empty line for a paragraph break."}}, "ar": {"stringUnit": {"state": "translated", "value": "لا يمكن أن يتكوّن سطر الوصف من مسافات فقط أو نقطة واحدة. استخدم سطرًا فارغًا للفصل بين الفقرات."}}, "de": {"stringUnit": {"state": "translated", "value": "Eine Beschreibungszeile darf nicht nur Leerraum oder einen einzelnen Punkt enthalten. Verwende eine leere Zeile als Absatzumbruch."}}, "es": {"stringUnit": {"state": "translated", "value": "Una línea de descripción no puede contener solo espacios en blanco o un punto. Usa una línea vacía para separar párrafos."}}, "fr": {"stringUnit": {"state": "translated", "value": "Une ligne de description ne peut contenir uniquement des espaces ou un point seul. Utilisez une ligne vide pour séparer les paragraphes."}}, "it": {"stringUnit": {"state": "translated", "value": "Una riga della descrizione non può contenere solo spazi o un singolo punto. Usa una riga vuota per separare i paragrafi."}}, "ja": {"stringUnit": {"state": "translated", "value": "説明の行に空白のみ、またはピリオド1つだけを入力することはできません。段落の区切りには空行を使用してください。"}}, "ko": {"stringUnit": {"state": "translated", "value": "설명의 한 줄에 공백만 또는 마침표 하나만 입력할 수 없습니다. 단락을 나누려면 빈 줄을 사용하세요."}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "Uma linha da descrição não pode conter apenas espaços em branco ou um único ponto. Use uma linha vazia para separar parágrafos."}}, "ru": {"stringUnit": {"state": "translated", "value": "Строка описания не может содержать только пробельные символы или одну точку. Для разделения абзацев используйте пустую строку."}}, "vi": {"stringUnit": {"state": "translated", "value": "Một dòng mô tả không được chỉ chứa khoảng trắng hoặc một dấu chấm. Dùng dòng trống để ngắt đoạn."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "描述续行不能只有空白字符或单个英文句点。请用空行分隔段落。"}}, "zh-Hant": {"stringUnit": {"state": "translated", "value": "描述續行不能只有空白字元或單個英文句點。請用空行分隔段落。"}}}},
     "Description" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Description"}}, "ar": {"stringUnit": {"state": "translated", "value": "الوصف"}}, "de": {"stringUnit": {"state": "translated", "value": "Beschreibung"}}, "es": {"stringUnit": {"state": "translated", "value": "Descripción"}}, "fr": {"stringUnit": {"state": "translated", "value": "Description"}}, "it": {"stringUnit": {"state": "translated", "value": "Descrizione"}}, "ja": {"stringUnit": {"state": "translated", "value": "説明"}}, "ko": {"stringUnit": {"state": "translated", "value": "설명"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "Descrição"}}, "ru": {"stringUnit": {"state": "translated", "value": "Описание"}}, "vi": {"stringUnit": {"state": "translated", "value": "Mô tả"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "描述"}}, "zh-Hant": {"stringUnit": {"state": "translated", "value": "描述"}}}},
     "Icon Link" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Icon Link"}}, "ar": {"stringUnit": {"state": "translated", "value": "رابط الأيقونة"}}, "de": {"stringUnit": {"state": "translated", "value": "Symbol-Link"}}, "es": {"stringUnit": {"state": "translated", "value": "Enlace del icono"}}, "fr": {"stringUnit": {"state": "translated", "value": "Lien de l’icône"}}, "it": {"stringUnit": {"state": "translated", "value": "Link icona"}}, "ja": {"stringUnit": {"state": "translated", "value": "アイコンのリンク"}}, "ko": {"stringUnit": {"state": "translated", "value": "아이콘 링크"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "Link do ícone"}}, "ru": {"stringUnit": {"state": "translated", "value": "Ссылка на значок"}}, "vi": {"stringUnit": {"state": "translated", "value": "Liên kết biểu tượng"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "图标链接"}}, "zh-Hant": {"stringUnit": {"state": "translated", "value": "圖示連結"}}}},
@@ -44418,6 +44426,89 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "選取項目"
+          }
+        }
+      }
+    },
+    "Select items inside and outside the trash separately." : {
+      "comment" : "Search selection must not mix ordinary trash moves with already trashed items.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "حدّد العناصر الموجودة داخل سلة المهملات وخارجها كلًّا على حدة."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle Objekte innerhalb und außerhalb des Papierkorbs getrennt aus."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select items inside and outside the trash separately."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selecciona por separado los elementos de dentro y de fuera de la papelera."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sélectionnez séparément les éléments dans la corbeille et ceux en dehors."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seleziona separatamente gli elementi dentro e fuori dal cestino."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ゴミ箱内とゴミ箱外の項目は別々に選択してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "휴지통 안의 항목과 밖의 항목을 따로 선택하세요."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selecione separadamente os itens dentro e fora do lixo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выбирайте объекты внутри и вне корзины отдельно."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hãy chọn riêng các mục ở trong và ngoài thùng rác."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请分别选择废纸篓内和废纸篓外的项目。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請分別選取廢紙簍內和廢紙簍外的項目。"
           }
         }
       }

@@ -125,6 +125,21 @@
             currentButton.isHidden ? nil : currentButton.frame
         }
 
+        /// The visible icon/title line, ending at its underline rather than the tap area's bottom.
+        public var currentContentFrame: CGRect? {
+            guard !currentButton.isHidden,
+                  let start = text.position(from: text.beginningOfDocument, offset: currentTapRange.location),
+                  let end = text.position(from: start, offset: currentTapRange.length),
+                  let range = text.textRange(from: start, to: end)
+            else { return nil }
+            var glyphs = text.convert(text.firstRect(for: range), to: self)
+            if !marker.isHidden {
+                glyphs.size.height = max(0, min(glyphs.maxY, marker.frame.maxY) - glyphs.minY)
+            }
+            let visible = glyphs.intersection(bounds)
+            return visible.isNull || visible.isEmpty || visible.isInfinite ? nil : visible
+        }
+
         private var currentTapGesture: UITapGestureRecognizer?
         private var longPressInteraction: UIContextMenuInteraction?
         private var longPressShown = false

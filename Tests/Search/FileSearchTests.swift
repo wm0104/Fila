@@ -58,6 +58,27 @@ struct FileSearchTests {
     }
 
     @Test
+    func `An asynchronous hit check preserves cancellation`() async {
+        let session = FileSession()
+        session.directories["/current"] = [[node("needle-one"), node("needle-two")]]
+        var hits: [String] = []
+        var summary = FileSearch.Summary()
+        let task = Task {
+            await FileSearch.run(
+                root: "/current", needle: "needle", session: session,
+                onSummary: { summary = $0 },
+            ) { _ in } onHit: { hit in
+                hits.append(hit.path)
+                await Task.yield()
+                withUnsafeCurrentTask { $0?.cancel() }
+            }
+        }
+        _ = await task.value
+        #expect(hits == ["/current/needle-one"])
+        #expect(summary.wasCancelled)
+    }
+
+    @Test
     func `Every page and descendant is searched without duplicate hits`() async {
         let session = FileSession()
         session.directories = [

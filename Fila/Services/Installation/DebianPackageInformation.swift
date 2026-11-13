@@ -98,6 +98,11 @@ struct DebianPackageInformation {
     let architecture: String
     let hasPackageIdentifier: Bool
     var package: String
+    var name: String
+    var section: String
+    var author: String
+    var maintainer: String
+    var homepage: String
     var version: String
     var descriptionText: String
     var date: String
@@ -110,6 +115,11 @@ struct DebianPackageInformation {
         self.architecture = architecture
         package = fields.value(of: "Package") ?? ""
         hasPackageIdentifier = !package.isEmpty
+        name = fields.value(of: "Name") ?? ""
+        section = fields.value(of: "Section") ?? ""
+        author = fields.value(of: "Author") ?? ""
+        maintainer = fields.value(of: "Maintainer") ?? ""
+        homepage = fields.value(of: "Homepage") ?? ""
         version = fields.value(of: "Version") ?? ""
         descriptionText = fields.descriptionText
         icon = fields.value(of: "Icon") ?? ""
@@ -153,6 +163,23 @@ struct DebianPackageInformation {
             guard normalized == architecture else {
                 throw DebianControlFailure(message: String(localized: "The selected architecture does not match this package."))
             }
+        }
+        for (field, text) in [("Name", name), ("Section", section), ("Author", author), ("Maintainer", maintainer), ("Homepage", homepage)] {
+            let value = text.trimmingCharacters(in: .whitespaces)
+            // Untouched fields keep their original spelling and continuation lines.
+            guard value != (original.value(of: field) ?? "") else { continue }
+            guard Self.singleLine(value), !text.contains(where: { $0.isNewline }) else {
+                throw DebianControlFailure(message: String(localized: "Enter plugin information on a single line without control characters."))
+            }
+            if field == "Homepage", !value.isEmpty {
+                guard !value.contains(where: { $0.isWhitespace }),
+                      let url = URLComponents(string: value), ["https", "http"].contains(url.scheme?.lowercased() ?? ""),
+                      url.host?.isEmpty == false, url.user == nil, url.password == nil, url.url != nil else {
+                    throw DebianControlFailure(message: String(localized: "Enter an HTTP or HTTPS plugin homepage link."))
+                }
+            }
+            fields.remove(field)
+            if !value.isEmpty { fields.set(field, value) }
         }
         let icon = icon.trimmingCharacters(in: .whitespaces)
         if !icon.isEmpty {

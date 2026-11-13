@@ -101,9 +101,19 @@ final class FileBrowserViewController: BackendListViewController<FileNode>, TabC
     private func presentFavoritesPanel() {
         let bar = pathBar
         let anchor = bar.currentTargetFrame.map { bar.convert($0, to: nil) }
+        let origin = bar.currentTargetFrame.flatMap { frame -> CGRect? in
+            let visible = frame.intersection(bar.bounds)
+            return visible.isNull || visible.isEmpty ? nil : bar.convert(visible, to: nil)
+        }
         let panel = PathFavoritesPanelViewController(
             directory: directory,
             sourceRect: anchor,
+            originRect: origin,
+            dismissalRect: { [weak bar] in
+                guard let bar else { return nil }
+                bar.layoutIfNeeded()
+                return bar.currentContentFrame.map { bar.convert($0, to: nil) }
+            },
             goToPath: { [weak self] in self?.promptGoToPath() },
             open: { [weak self] path in self?.open(directory: path) },
         )

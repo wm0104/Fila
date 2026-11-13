@@ -15,6 +15,88 @@ struct DebianPackageInformationTests {
     """
 
     @Test
+    func commonInformationLoadsFromEachPackageAndSavesEdits() throws {
+        let input = control + "Name: One\nSection: Utilities\nAuthor: Original Author\nHomepage: https://old.example.com/one\n"
+        var info = try DebianPackageInformation(control: input, architecture: "iphoneos-arm64e")
+        #expect(info.hasPackageIdentifier)
+        #expect(info.name == "One")
+        #expect(info.section == "Utilities")
+        #expect(info.author == "Original Author")
+        #expect(info.maintainer == "Someone")
+        #expect(info.homepage == "https://old.example.com/one")
+        info.name = "  另一个插件  "
+        info.section = "乌龙"
+        info.author = "New Author <author@example.com>"
+        info.maintainer = "New Maintainer <maintainer@example.com>"
+        info.homepage = "https://new.example.com/plugin"
+        let text = try info.controlText()
+        let fields = try ControlFields(text: text)
+        #expect(fields.value(of: "Name") == "另一个插件")
+        #expect(fields.value(of: "Section") == "乌龙")
+        #expect(fields.value(of: "Author") == info.author)
+        #expect(fields.value(of: "Maintainer") == info.maintainer)
+        #expect(fields.value(of: "Homepage") == info.homepage)
+        #expect(fields.value(of: "Package") == "com.example.one")
+        #expect(fields.value(of: "Architecture") == "iphoneos-arm64e")
+        #expect(fields.value(of: "Depends") == "firmware (>= 15.0)")
+        #expect(fields.value(of: "X-Unknown") == "keep me")
+        #expect(text.contains("\n Long description stays here.\n"))
+        let reopened = try DebianPackageInformation(control: text, architecture: "iphoneos-arm64e")
+        #expect(try reopened.controlText() == text)
+    }
+
+    @Test
+    func optionalInformationCanBeAddedAndClearedWithoutInventingDefaults() throws {
+        var info = try DebianPackageInformation(control: control, architecture: "iphoneos-arm64e")
+        #expect(info.name.isEmpty && info.section.isEmpty && info.author.isEmpty && info.homepage.isEmpty)
+        info.name = "Two"
+        info.section = "Custom Category"
+        info.author = "Another Author"
+        info.homepage = "http://example.com/two"
+        let added = try info.controlText()
+        info = try DebianPackageInformation(control: added, architecture: "iphoneos-arm64e")
+        info.name = ""
+        info.section = "  "
+        info.author = ""
+        info.maintainer = ""
+        info.homepage = ""
+        let cleared = try ControlFields(text: info.controlText())
+        for field in ["Name", "Section", "Author", "Maintainer", "Homepage"] {
+            #expect(cleared.value(of: field) == nil)
+        }
+        #expect(cleared.value(of: "Package") == "com.example.one")
+        #expect(cleared.value(of: "X-Unknown") == "keep me")
+    }
+
+    @Test
+    func untouchedInformationKeepsOriginalSpellingAndContinuations() throws {
+        let input = control + "nAmE:  One  \n continuation\nSection: Utilities\nHomepage: cydia://legacy-example\n"
+        var info = try DebianPackageInformation(control: input, architecture: "iphoneos-arm64e")
+        #expect(try info.controlText() == input + "X-WM0104-Release-Date: \(info.date)\n")
+        info.name = "Replacement"
+        let edited = try info.controlText()
+        #expect(!edited.contains("\n continuation\n"))
+        #expect(try ControlFields(text: edited).value(of: "Name") == "Replacement")
+        #expect(edited.contains("Homepage: cydia://legacy-example\n"))
+    }
+
+    @Test(arguments: ["Injected\nDepends: bad", "Injected\rVersion: 9", "Bad\0value", "Bad\tvalue", "Bad\u{7f}value", "Bad\u{2028}line"])
+    func commonInformationCannotInjectControlFields(_ value: String) throws {
+        for key in [\DebianPackageInformation.name, \.section, \.author, \.maintainer] {
+            var info = try DebianPackageInformation(control: control, architecture: "iphoneos-arm64e")
+            info[keyPath: key] = value
+            #expect(throws: DebianControlFailure.self) { try info.controlText() }
+        }
+    }
+
+    @Test(arguments: ["file:///var/mobile/plugin", "javascript:alert(1)", "https://user:pass@example.com/", "https://", "https://example.com/a b", "https://example.com/\nPackage: injected"])
+    func editedHomepageMustBeAWebsiteAddress(_ homepage: String) throws {
+        var info = try DebianPackageInformation(control: control, architecture: "iphoneos-arm64e")
+        info.homepage = homepage
+        #expect(throws: DebianControlFailure.self) { try info.controlText() }
+    }
+
+    @Test
     func missingInformationCanBeFilledWithoutGuessingAnIdentity() throws {
         var info = try DebianPackageInformation(control: "Depends: firmware\n", architecture: "iphoneos-arm64e")
         #expect(!info.hasPackageIdentifier)

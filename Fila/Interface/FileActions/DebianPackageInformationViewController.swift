@@ -5,8 +5,8 @@ import UIKit
 
 /// The existing grouped form cells and sheet; packing owns all file writes.
 final class DebianPackageInformationViewController: UITableViewController {
-    private enum Section: Int, CaseIterable { case plugin, version, changes }
-    private enum Row { case package, architecture, summary, icon, version, date, changes }
+    private enum Section: Int, CaseIterable { case plugin, author, details, version, changes }
+    private enum Row { case name, section, package, author, maintainer, homepage, summary, icon, version, date, changes }
     private var information: DebianPackageInformation
     private let confirm: (String) -> Void
     private let changes = UITextView().then {
@@ -52,7 +52,9 @@ final class DebianPackageInformationViewController: UITableViewController {
 
     private func rows(_ section: Int) -> [Row] {
         switch Section(rawValue: section) {
-        case .plugin: [.package, .architecture, .summary, .icon]
+        case .plugin: [.name, .section] + (information.hasPackageIdentifier ? [] : [.package])
+        case .author: [.author, .maintainer, .homepage]
+        case .details: [.summary, .icon]
         case .version: [.version, .date]
         case .changes: [.changes]
         case nil: []
@@ -65,6 +67,8 @@ final class DebianPackageInformationViewController: UITableViewController {
     override func tableView(_: UITableView, titleForHeaderInSection section: Int) -> String? {
         switch Section(rawValue: section) {
         case .plugin: String(localized: "Plugin Information")
+        case .author: String(localized: "Author Information")
+        case .details: String(localized: "Plugin Details")
         case .version: String(localized: "Version Information")
         case .changes: String(localized: "What's New")
         case nil: nil
@@ -73,7 +77,7 @@ final class DebianPackageInformationViewController: UITableViewController {
 
     override func tableView(_: UITableView, titleForFooterInSection section: Int) -> String? {
         switch Section(rawValue: section) {
-        case .plugin: String(localized: "The icon link is optional. It must point to a public image, not a local file.")
+        case .details: String(localized: "The icon link is optional. It must point to a public image, not a local file.")
         case .changes: String(localized: "Press Return for each update. Wrapped text stays in the same update. Information is saved to control before packing; the payload is kept unchanged.")
         default: nil
         }
@@ -87,7 +91,7 @@ final class DebianPackageInformationViewController: UITableViewController {
             cell.contentView.addSubview(changes)
             changes.snp.makeConstraints { make in
                 make.edges.equalTo(cell.contentView.layoutMarginsGuide)
-                make.height.equalTo(160)
+                make.height.equalTo(80)
             }
             return cell
         }
@@ -103,20 +107,16 @@ final class DebianPackageInformationViewController: UITableViewController {
             cell.accessoryType = .disclosureIndicator
             return cell
         }
-        if row == .architecture || row == .package && information.hasPackageIdentifier {
-            let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
-            var content = UIListContentConfiguration.valueCell()
-            content.text = row == .architecture ? String(localized: "Architecture") : String(localized: "Package Identifier")
-            content.secondaryText = row == .architecture ? information.architecture : information.package
-            cell.contentConfiguration = content
-            cell.selectionStyle = .none
-            return cell
-        }
         let cell = tableView.dequeueReusableCell(withIdentifier: "field", for: indexPath) as! FormFieldCell
         cell.configure(field(row)) { [weak self] text in
             guard let self else { return }
             switch row {
+            case .name: information.name = text
+            case .section: information.section = text
             case .package: information.package = text
+            case .author: information.author = text
+            case .maintainer: information.maintainer = text
+            case .homepage: information.homepage = text
             case .icon: information.icon = text
             case .version: information.version = text
             case .date: information.date = text
@@ -128,7 +128,12 @@ final class DebianPackageInformationViewController: UITableViewController {
 
     private func field(_ row: Row) -> FormFieldCell.Configuration {
         switch row {
+        case .name: .init(title: String(localized: "Plugin Name"), placeholder: String(localized: "Optional"), text: information.name)
+        case .section: .init(title: String(localized: "Category"), placeholder: String(localized: "Optional"), text: information.section)
         case .package: .init(title: String(localized: "Package Identifier"), placeholder: "com.example.package", text: information.package)
+        case .author: .init(title: String(localized: "Author"), placeholder: String(localized: "Optional"), text: information.author)
+        case .maintainer: .init(title: String(localized: "Maintainer"), placeholder: String(localized: "Optional"), text: information.maintainer)
+        case .homepage: .init(title: String(localized: "Plugin Homepage"), placeholder: String(localized: "Optional"), text: information.homepage, keyboard: .URL)
         case .icon: .init(title: String(localized: "Icon Link"), placeholder: String(localized: "Optional"), text: information.icon, keyboard: .URL)
         case .version: .init(title: String(localized: "Version"), placeholder: String(localized: "Required"), text: information.version)
         case .date: .init(title: String(localized: "Release Date"), placeholder: "YYYY-MM-DD", text: information.date, keyboard: .numbersAndPunctuation)

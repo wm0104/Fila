@@ -26,6 +26,10 @@ final class SearchViewController: TabContentViewController {
     private var query = ""
     private var isSearching = false
     private var summary = FileSearch.Summary()
+    private var changes = FileSearchChanges()
+    private var refreshTask: Task<Void, Never>?
+    private var borrowedLeftItems: [UIBarButtonItem]?
+    private lazy var moreButton = SearchViewController.actionsItem(menu: nil)
 
     private var searchRoot: String {
         scope == .folder ? root : session.local.rootPath
@@ -50,7 +54,7 @@ final class SearchViewController: TabContentViewController {
         self.scope = scope
         super.init(nibName: nil, bundle: nil)
         title = String(localized: "Search")
-        trailingNavigationItems = [Self.actionsItem(menu: nil)]
+        trailingNavigationItems = [moreButton]
         updateScopeMenu()
         // The folder being searched, then this screen; a crumb on the
         // folder or an ancestor goes back to its browser.
@@ -65,7 +69,10 @@ final class SearchViewController: TabContentViewController {
         fatalError("not supported")
     }
 
-    deinit { walk?.cancel() }
+    deinit {
+        walk?.cancel()
+        refreshTask?.cancel()
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -94,6 +101,7 @@ final class SearchViewController: TabContentViewController {
             $0.delegate = self
             $0.alwaysBounceVertical = true
             $0.keyboardDismissMode = .onDrag
+            $0.allowsMultipleSelectionDuringEditing = true
         }
         view.addSubview(collectionView)
         collectionView.snp.makeConstraints { make in
@@ -114,7 +122,10 @@ final class SearchViewController: TabContentViewController {
                 highlight: self?.query,
             )
             cell.showThumbnail(for: hit.path, node: hit.node, session: .shared)
-            cell.accessories = hit.node.isNavigable ? [.disclosureIndicator()] : []
+            cell.accessories = [.multiselect(displayed: .whenEditing)]
+            if hit.node.isNavigable {
+                cell.accessories.append(.disclosureIndicator(displayed: .whenNotEditing))
+            }
         }
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) { collection, indexPath, hit in
             collection.dequeueConfiguredReusableCell(using: cell, for: indexPath, item: hit)
@@ -141,6 +152,11 @@ final class SearchViewController: TabContentViewController {
     /// Only the first time: coming Back to results keeps the keyboard down.
     private var hasActivatedSearch = false
     private var hasOfferedKeyboard = false
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        updateSelectionChrome()
+    }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
@@ -184,6 +200,8 @@ final class SearchViewController: TabContentViewController {
         super.viewDidDisappear(animated)
         if navigationController?.viewControllers.contains(where: { $0 === self }) != true {
             stopSearch()
+            refreshTask?.cancel()
+            refreshTask = nil
         }
     }
 
@@ -201,7 +219,16 @@ final class SearchViewController: TabContentViewController {
                 self?.selectScope(option)
             }
         }
-        navigationItem.rightBarButtonItem?.menu = UIMenu(children: [
+        let select = UIDeferredMenuElement.uncached { [weak self] done in
+            guard let self else { done([]); return }
+            done([UIAction(
+                title: String(localized: "Select"),
+                image: UIImage(systemName: "checkmark.circle"),
+                attributes: hits.isEmpty ? [.disabled] : [],
+            ) { [weak self] _ in self?.setEditing(true, animated: true) }])
+        }
+        moreButton.menu = UIMenu(children: [
+            UIMenu(options: .displayInline, children: [select]),
             FilaMenu.selection(title: String(localized: "Search In"), actions: actions),
             settingsMenuElement,
         ])
@@ -216,6 +243,9 @@ final class SearchViewController: TabContentViewController {
     }
 
     private func start(_ needle: String) {
+        if isEditing { setEditing(false, animated: true) }
+        refreshTask?.cancel()
+        refreshTask = nil
         walk?.cancel()
         walk = nil
         let searchID = UUID()
@@ -247,14 +277,7 @@ final class SearchViewController: TabContentViewController {
                 self.lastProgressDraw = Date()
                 self.updateStatus()
             } onHit: { hit in
-                guard !Task.isCancelled, self.searchID == searchID else { return }
-                self.hits.append(hit)
-                // By time, not by count: an apply costs by the rows already
-                // listed, and thousands of hits a few at a time would spend
-                // the main thread diffing the same list over and over.
-                guard self.hits.count == 1 || Date().timeIntervalSince(self.lastHitsDraw) > 0.25 else { return }
-                self.lastHitsDraw = Date()
-                self.apply()
+                await self.receive(hit, searchID: searchID)
             }
             guard !Task.isCancelled, self.searchID == searchID else { return }
             walk = nil
@@ -275,7 +298,9 @@ final class SearchViewController: TabContentViewController {
         }
         renderedQuery = query
         renderedScope = scope
-        dataSource.apply(snapshot, animatingDifferences: false)
+        dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
+            self?.updateSelectionChrome()
+        }
         let showsFooter = footerText != nil
         if showsFooter != hasFooterLayout {
             hasFooterLayout = showsFooter
@@ -285,6 +310,153 @@ final class SearchViewController: TabContentViewController {
             collectionView.collectionViewLayout.invalidateLayout()
         }
         updateStatus()
+    }
+
+    // MARK: - Selection, using the browser's controls and native list interaction
+
+    override func setEditing(_ editing: Bool, animated: Bool) {
+        let changed = editing != isEditing
+        super.setEditing(editing, animated: animated)
+        guard isViewLoaded else { return }
+        collectionView.isEditing = editing
+        if changed {
+            collectionView.indexPathsForSelectedItems?.forEach {
+                collectionView.deselectItem(at: $0, animated: false)
+            }
+        }
+        if editing {
+            navigationItem.searchController?.searchBar.resignFirstResponder()
+            if borrowedLeftItems == nil { borrowedLeftItems = navigationItem.leftBarButtonItems ?? [] }
+        }
+        updateSelectionChrome(animated: animated && changed)
+    }
+
+    private var selectedHits: [FileSearchResult] {
+        (collectionView.indexPathsForSelectedItems ?? []).compactMap { dataSource.itemIdentifier(for: $0) }
+    }
+
+    private func updateSelectionChrome(animated: Bool = false) {
+        guard isViewLoaded, navigationController?.topViewController === self else { return }
+        navigationItem.setHidesBackButton(isEditing, animated: animated)
+        guard isEditing else {
+            navigationItem.title = String(localized: "Search")
+            if let borrowed = borrowedLeftItems {
+                navigationItem.leftBarButtonItems = borrowed.isEmpty ? nil : borrowed
+                borrowedLeftItems = nil
+                shell?.configureSidebarButton(for: self)
+            }
+            trailingNavigationItems = [moreButton]
+            setToolbarOverride(nil, animated: animated)
+            return
+        }
+        let selection = selectedHits
+        navigationItem.title = selection.isEmpty
+            ? String(localized: "Select Items") : String(localized: "\(selection.count) Selected")
+        let cancel = UIBarButtonItem(image: UIImage(systemName: "xmark"), primaryAction: UIAction { [weak self] _ in
+            self?.setEditing(false, animated: true)
+        })
+        cancel.accessibilityLabel = String(localized: "Cancel")
+        cancel.title = String(localized: "Cancel")
+        navigationItem.leftBarButtonItems = [cancel]
+        trailingNavigationItems = []
+        let items = selectionToolbar
+        let count = dataSource.snapshot().numberOfItems
+        let allSelected = selection.count == count && count > 0
+        items.selectAll.image = UIImage(systemName: allSelected ? "checkmark.circle.fill" : "checkmark.circle")
+        items.selectAll.accessibilityLabel = allSelected ? String(localized: "Deselect All") : String(localized: "Select All")
+        items.selectAll.title = items.selectAll.accessibilityLabel
+        items.selectAll.isEnabled = count > 0
+        let allInTrash = !selection.isEmpty && selection.allSatisfy { FileActions.isTrashDestination($0.directory) }
+        items.delete.accessibilityLabel = allInTrash ? String(localized: "Delete Permanently") : FileActions.deleteTitle
+        items.delete.title = items.delete.accessibilityLabel
+        items.delete.isEnabled = !selection.isEmpty
+        guard toolbarOverride?.first !== items.selectAll else { return }
+        if #available(iOS 26.0, *) {
+            setToolbarOverride([items.selectAll, .flexibleSpace(), items.delete], animated: animated)
+        } else {
+            setToolbarOverride([items.selectAll, .flexibleSpace(), items.delete], animated: false)
+        }
+    }
+
+    private lazy var selectionToolbar: (selectAll: UIBarButtonItem, delete: UIBarButtonItem) = {
+        let selectAll = UIBarButtonItem(
+            image: UIImage(systemName: "checkmark.circle"),
+            primaryAction: UIAction { [weak self] _ in self?.toggleSelectAll() },
+        )
+        let delete = UIBarButtonItem(image: UIImage(systemName: "trash"), primaryAction: UIAction { [weak self] _ in
+            self?.deleteSelection()
+        })
+        delete.tintColor = .systemRed
+        if #available(iOS 26.0, *) {
+            selectAll.sharesBackground = false
+            delete.sharesBackground = false
+            selectAll.identifier = "selectAll"
+            delete.identifier = "delete"
+        }
+        return (selectAll, delete)
+    }()
+
+    private func toggleSelectAll() {
+        let deselect = !selectedHits.isEmpty && selectedHits.count == dataSource.snapshot().numberOfItems
+        for hit in dataSource.snapshot().itemIdentifiers {
+            guard let index = dataSource.indexPath(for: hit) else { continue }
+            if deselect {
+                collectionView.deselectItem(at: index, animated: false)
+            } else {
+                collectionView.selectItem(at: index, animated: false, scrollPosition: [])
+            }
+        }
+        updateSelectionChrome()
+    }
+
+    private func deleteSelection() {
+        let selection = selectedHits
+        guard !selection.isEmpty else { return }
+        let trashed = selection.filter { FileActions.isTrashDestination($0.directory) }.count
+        // Do not re-trash old items and replace their recorded recovery origins.
+        if FileActions.movesToTrash, trashed > 0, trashed < selection.count {
+            presentMessage(
+                String(localized: "Select Items"),
+                message: String(localized: "Select items inside and outside the trash separately."),
+            )
+            return
+        }
+        FileActions(presenter: self, directory: root, removals: self)
+            .delete(selection.map(\.path), permanently: trashed == selection.count)
+    }
+
+    // MARK: - Reconcile changed results without restarting a whole-system walk
+
+    private func stillExists(_ path: String) async -> Bool {
+        do {
+            _ = try await session.perform(retryOnDisconnect: true) { try await $0.details(of: path) }
+            return true
+        } catch let failure as FilaFailure where failure.code == .notFound || failure.systemError == ENOENT {
+            return false
+        } catch {
+            return true // An unreadable or disconnected path is not a confirmed removal.
+        }
+    }
+
+    private func receive(_ hit: FileSearchResult, searchID: UUID) async {
+        while !Task.isCancelled, self.searchID == searchID {
+            let revision = changes.revision
+            let exists: Bool
+            if changes.contains(hit.path) {
+                exists = await stillExists(hit.path)
+            } else {
+                exists = true
+            }
+            guard !Task.isCancelled, self.searchID == searchID else { return }
+            if revision != changes.revision { continue }
+            guard exists else { return }
+            hits.append(hit)
+            if hits.count == 1 || Date().timeIntervalSince(lastHitsDraw) > 0.25 {
+                lastHitsDraw = Date()
+                apply()
+            }
+            return
+        }
     }
 
     /// Shared by the existing footer and empty state, including zero-hit failures.
@@ -347,7 +519,7 @@ final class SearchViewController: TabContentViewController {
         // the search field's magnifier is the one slot that can say so
         // without adding a row.
         let field = navigationItem.searchController?.searchBar.searchTextField
-        if isSearching, !hits.isEmpty {
+        if isSearching || refreshTask != nil, !hits.isEmpty {
             spinner.startAnimating()
             field?.leftView = spinner
         } else {
@@ -384,7 +556,7 @@ final class SearchViewController: TabContentViewController {
 
     private var status: StatusView.Content? {
         guard hits.isEmpty else { return nil }
-        if isSearching {
+        if isSearching || refreshTask != nil {
             let detail = [currentDirectory, scopeNotes].compactMap { $0 }.joined(separator: "\n")
             return .loading(String(localized: "Searching…"), detail: detail)
         }
@@ -437,7 +609,20 @@ extension SearchViewController: UISearchBarDelegate {
 }
 
 extension SearchViewController: UICollectionViewDelegate {
+    func collectionView(_: UICollectionView, shouldBeginMultipleSelectionInteractionAt indexPath: IndexPath) -> Bool {
+        dataSource.itemIdentifier(for: indexPath) != nil
+    }
+
+    func collectionView(_: UICollectionView, didBeginMultipleSelectionInteractionAt _: IndexPath) {
+        setEditing(true, animated: true)
+    }
+
+    func collectionView(_: UICollectionView, didDeselectItemAt _: IndexPath) {
+        if isEditing { updateSelectionChrome() }
+    }
+
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        if isEditing { updateSelectionChrome(); return }
         collectionView.deselectItem(at: indexPath, animated: true)
         guard let hit = dataSource.itemIdentifier(for: indexPath) else { return }
         open(hit)
@@ -457,7 +642,7 @@ extension SearchViewController: UICollectionViewDelegate {
         contextMenuConfigurationForItemAt indexPath: IndexPath,
         point _: CGPoint,
     ) -> UIContextMenuConfiguration? {
-        guard let hit = dataSource.itemIdentifier(for: indexPath) else { return nil }
+        guard !isEditing, let hit = dataSource.itemIdentifier(for: indexPath) else { return nil }
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
             guard let self else { return nil }
             var additional: [UIMenuElement] = [
@@ -476,10 +661,8 @@ extension SearchViewController: UICollectionViewDelegate {
                     self?.shell?.openInNewTab(hit.path)
                 })
             }
-            let actions = FileActions(presenter: self, directory: hit.directory) { [weak self] in
-                guard let self else { return }
-                hits.removeAll { $0 == hit }
-                apply()
+            let actions = FileActions(presenter: self, directory: hit.directory, removals: self) { [weak self] in
+                self?.removalDidEnd([hit.path])
             }
             return UIMenu(
                 title: hit.node.name,
@@ -491,5 +674,29 @@ extension SearchViewController: UICollectionViewDelegate {
                 ),
             )
         }
+    }
+}
+
+extension SearchViewController: RemovalTracking {
+    func removalWillStart(_ paths: [String]) {
+        changes.record(paths)
+    }
+
+    func removalDidEnd(_ paths: [String]) {
+        changes.record(paths)
+        refreshTask?.cancel()
+        refreshTask = Task { [weak self] in
+            guard let self else { return }
+            let candidates = hits.filter { changes.contains($0.path) }
+            for hit in candidates {
+                let exists = await stillExists(hit.path)
+                guard !Task.isCancelled else { return }
+                if !exists { hits.removeAll { $0.path == hit.path } }
+            }
+            guard !Task.isCancelled else { return }
+            refreshTask = nil
+            apply()
+        }
+        updateStatus()
     }
 }

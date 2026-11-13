@@ -13,6 +13,9 @@ with tempfile.TemporaryDirectory(prefix='fila-search-tests-') as directory:
     sources.mkdir(parents=True)
     shutil.copy2(repo / 'Fila/Services/Files/FileSearch.swift', sources / 'FileSearch.swift')
     shutil.copy2(repo / 'Tests/Search/FileSearchTests.swift', sources / 'FileSearchTests.swift')
+    shutil.copy2(repo / 'Tests/Search/FileSearchChangesTests.swift', sources / 'FileSearchChangesTests.swift')
+    shutil.copy2(repo / 'Fila/Interface/Browser/PathFavoritesTransition.swift', sources / 'PathFavoritesTransition.swift')
+    shutil.copy2(repo / 'Tests/Search/PathFavoritesTransitionTests.swift', sources / 'PathFavoritesTransitionTests.swift')
     dependency = json.dumps(str(repo / 'Packages/FilaKit'))
     (package / 'Package.swift').write_text('''// swift-tools-version: 6.0
 import PackageDescription
