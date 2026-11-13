@@ -45,6 +45,12 @@ final class OperationCenter: ObservableObject {
     /// only while one is: with none outstanding nothing will ever claim it,
     /// and an identifier the restarted daemon hands out again would.
     private var startsInFlight = 0
+    private var queuedStarts = 0
+
+    /// Includes jobs waiting for their daemon identifier, not just visible rows.
+    var hasActiveWork: Bool {
+        queuedStarts > 0 || startsInFlight > 0 || operations.contains(where: \.isRunning)
+    }
 
     /// How many finished rows the list keeps. It is a receipt, not a history.
     private static let finishedLimit = 20
@@ -267,8 +273,10 @@ final class OperationCenter: ObservableObject {
     private func begin(_ request: JobRequest, kind: Kind, subtitle: String, undo: Undo? = nil) {
         guard !request.sources.isEmpty else { return }
         let logSubject = Self.describeForLog(request.sources, destination: request.destination)
+        queuedStarts += 1
         Task { [weak self] in
             guard let self else { return }
+            defer { queuedStarts -= 1 }
             do {
                 try await startJob(request, kind: kind, title: kind.runningTitle, subtitle: subtitle, undo: undo)
             } catch {

@@ -17,6 +17,9 @@ import UIKit
 /// runs in a task of its own, so cancelling the calling task cancels it too.
 @MainActor
 enum ProgressCard {
+    private static var activeCount = 0
+    static var hasActiveWork: Bool { activeCount > 0 }
+
     static func run<T: Sendable>(
         title: String,
         message: String,
@@ -24,6 +27,8 @@ enum ProgressCard {
         from presenter: UIViewController,
         operation: @escaping @MainActor (_ update: @escaping @MainActor (String) -> Void) async throws -> T,
     ) async throws -> T {
+        activeCount += 1
+        defer { activeCount -= 1 }
         let state = State(.init(title: title, subtitle: message, progress: nil, isCancellable: cancellable))
         let work = Task { @MainActor in
             try await operation { state.subject.value?.subtitle = $0 }

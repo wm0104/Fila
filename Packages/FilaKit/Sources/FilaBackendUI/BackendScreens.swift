@@ -93,6 +93,8 @@
         /// The app's Settings, over whatever is on top of `presenter`'s window;
         /// nothing when they are already open there.
         func presentSettings(from presenter: UIViewController)
+        /// Native Settings submenu, built by the host when More is opened.
+        func settingsMenu(from presenter: UIViewController) -> UIMenu
 
         /// The app's clipboard as a module screen sees it: nil while empty.
         /// `Notification.Name.filaClipboardChanged` says when to ask again.

@@ -28,6 +28,13 @@ struct FileSearchResult: Hashable {
 enum FileSearch {
     static let resultLimit = 10000
 
+    struct Summary {
+        var unreadableDirectories = 0
+        var skippedLinks = 0
+        var isTruncated = false
+        var wasCancelled = false
+    }
+
     /// Breadth-first so shallow hits — the ones the user usually meant — arrive
     /// first. Streams matches as it goes and stops the moment the task is
     /// cancelled, which is what leaving the screen does, or once `limit`
@@ -38,9 +45,9 @@ enum FileSearch {
     /// long time, and a screen that cannot say where it has got to is
     /// indistinguishable from one that has stopped.
     ///
-    /// Returns how many links to directories were passed over without being
-    /// entered, so the screen can say that what lies behind them was not
-    /// searched.
+    /// Returns how many symbolic links were not entered. The optional summary
+    /// also reports unreadable directories, cancellation and the result cap;
+    /// the integer return and trailing callbacks stay compatible with Shortcuts.
     @MainActor
     @discardableResult
     static func run(
@@ -48,9 +55,15 @@ enum FileSearch {
         needle: String,
         session: FileSession,
         limit: Int = resultLimit,
+        onSummary: (@MainActor (Summary) -> Void)? = nil,
         onVisit: @MainActor (String) -> Void,
         onHit: @MainActor (FileSearchResult) -> Void,
     ) async -> Int {
+        var summary = Summary()
+        defer {
+            summary.wasCancelled = summary.wasCancelled || Task.isCancelled
+            onSummary?(summary)
+        }
         let needle = needle.lowercased()
         guard !needle.isEmpty, limit > 0 else { return 0 }
         // The needle is what the user typed, not a path and not content. A
@@ -64,13 +77,13 @@ enum FileSearch {
         var frontier = [root]
         var next = 0
         var found = 0
-        var skippedLinks = 0
-        // One exit line however the walk ends — the limit, the cancellation
-        // that leaving the screen causes, or running out of frontier. There
-        // are four returns and they should not each carry their own.
+        // One exit line however the walk ends — the limit, cancellation or
+        // running out of frontier.
         defer {
             FilaLog.info(
-                "search \"\(needle)\" ended: \(found) hit(s), \(skippedLinks) link(s) not entered"
+                "search \"\(needle)\" ended: \(found) hit(s), \(summary.skippedLinks) link(s) not entered,"
+                    + " \(summary.unreadableDirectories) unreadable folder(s)"
+                    + (summary.isTruncated ? ", truncated" : "")
                     + (Task.isCancelled ? ", cancelled" : "")
                     + ", \(Int(Date().timeIntervalSince(startedAt) * 1000))ms",
             )
@@ -79,7 +92,7 @@ enum FileSearch {
             let directory = frontier[next]
             frontier[next] = ""
             next += 1
-            guard !Task.isCancelled else { return skippedLinks }
+            guard !Task.isCancelled else { return summary.skippedLinks }
             onVisit(directory)
             // A directory being listed is live, so a name can come back on
             // two pages, and a name queued twice would walk its whole subtree
@@ -94,13 +107,19 @@ enum FileSearch {
                 // that cannot be read is passed over, the way `find` does.
                 for try await page in DirectoryReader.pages(in: directory, session: session) {
                     for node in page where seen.insert(node.name).inserted {
-                        guard !Task.isCancelled else { return skippedLinks }
+                        guard !Task.isCancelled else { return summary.skippedLinks }
                         let hit = FileSearchResult(directory: directory, node: node)
+                        // Count even unresolved links: their target may be a
+                        // directory the backend cannot inspect. Never enter it.
+                        if node.kind == .symbolicLink {
+                            summary.skippedLinks += 1
+                        }
                         if node.name.lowercased().contains(needle) {
                             onHit(hit)
                             found += 1
                             if found >= limit {
-                                return skippedLinks
+                                summary.isTruncated = true
+                                return summary.skippedLinks
                             }
                         }
                         // Symlinks are not followed: a jailbroken filesystem is
@@ -111,15 +130,20 @@ enum FileSearch {
                         // counted so the screen can say so.
                         if node.kind == .directory {
                             frontier.append(hit.path)
-                        } else if node.kind == .symbolicLink, node.link?.resolvedKind == .directory {
-                            skippedLinks += 1
                         }
                     }
+                    onSummary?(summary)
                 }
             } catch {
+                guard !Task.isCancelled, !(error is CancellationError) else {
+                    summary.wasCancelled = true
+                    return summary.skippedLinks
+                }
+                summary.unreadableDirectories += 1
+                onSummary?(summary)
                 continue
             }
         }
-        return skippedLinks
+        return summary.skippedLinks
     }
 }

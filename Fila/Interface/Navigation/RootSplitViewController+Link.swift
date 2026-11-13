@@ -1,5 +1,6 @@
 import FilaBackendKit
 import FilaBackendUI
+import FilaClient
 import FilaLog
 import FilaProtocol
 import UIKit
@@ -15,11 +16,19 @@ extension RootSplitViewController {
     /// `connectionOptions.urlContexts`, a warm one through
     /// `scene(_:openURLContexts:)`.
     func follow(_ contexts: Set<UIOpenURLContext>) {
+        guard !ConfigurationBackupController.isExiting else { return }
         // A `file:` URL is not a link: it is a file the system already copied
         // into this app's Inbox for *Copy to Fila*. One panel for the whole
         // batch, and never through `FilaLink` — see `importFiles`.
         let files = contexts.map(\.url).filter(\.isFileURL)
-        if !files.isEmpty {
+        if files.count == 1, let file = files.first,
+           file.pathExtension.lowercased() == ConfigurationBackup.fileExtension
+        {
+            Task { @MainActor in
+                await FileSession.shared.ready()
+                ConfigurationBackupController.restore(path: file.path, from: self)
+            }
+        } else if !files.isEmpty {
             importFiles(files)
         }
         for context in contexts where !context.url.isFileURL {
@@ -55,6 +64,7 @@ extension RootSplitViewController {
     /// second copy of that would be a second place for them to drift apart.
     /// Everything else still arrives as a URL.
     func follow(_ link: FilaLink) {
+        guard !ConfigurationBackupController.isExiting else { return }
         switch link {
         case .activate:
             return

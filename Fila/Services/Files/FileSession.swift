@@ -44,6 +44,7 @@ final class FileSession {
     private var temporaryPreparation: Task<URL, Error>?
     /// Set once `temporaryPreparation` has succeeded.
     private var temporaryWorkspace: URL?
+    private(set) var activeStagingCount = 0
 
     private init() {
         let registry = BackendComposition.registry
@@ -333,6 +334,8 @@ final class FileSession {
     /// Copies through a descriptor into the app's temporary workspace. The
     /// consumer owns the returned file's parent directory until completion.
     func stage(_ path: String) async throws -> URL {
+        activeStagingCount += 1
+        defer { activeStagingCount -= 1 }
         let directory = try await makeTemporaryDirectory()
         let target = directory.appendingPathComponent(URL(fileURLWithPath: path).lastPathComponent)
         do {

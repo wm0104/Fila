@@ -18,6 +18,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.rootViewController = root
         window.makeKeyAndVisible()
         self.window = window
+        ConfigurationBackupController.reportStartupFailure()
 
         // A `fila://` link that launched the app arrives here, and one handed
         // to an app that is already running arrives below. Both, always: a

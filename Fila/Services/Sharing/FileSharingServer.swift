@@ -29,6 +29,9 @@ final class FileSharingServer {
     /// Set when a start failed, and cleared by the next one. A port already in
     /// use is the only way this happens in practice.
     private(set) var startFailure: String?
+    /// Stopping closes network channels asynchronously. A fresh launch is the
+    /// conservative restore boundary until the server exposes a drain receipt.
+    private(set) var requiresRestartBeforeConfigurationRestore = false
 
     private let server = WebDAVServer(service: WebDAVFileService())
     private var background: UIBackgroundTaskIdentifier = .invalid
@@ -83,6 +86,7 @@ final class FileSharingServer {
     private var startGeneration: UInt64 = 0
 
     func start() {
+        requiresRestartBeforeConfigurationRestore = true
         let preferences = AppPreferences.shared
         startFailure = nil
         resolvingRoot = true

@@ -1,6 +1,7 @@
 import FilaBackendKit
 import FilaFormats
 import FilaProtocol
+import FilaRemote
 import Foundation
 
 /// The one place an error becomes a sentence a person can read.
@@ -24,7 +25,44 @@ enum FailureMessage {
         case let refusal as TransferRefusal: message(for: refusal)
         case let shortfall as TransferShortfall: message(for: shortfall)
         case let write as WriteFailure: message(for: write)
+        case let failure as URLDownload.Failure: message(for: failure)
+        case let failure as URLError: message(for: failure)
         default: error.localizedDescription
+        }
+    }
+
+    // MARK: - Downloads
+
+    private static func message(for failure: URLDownload.Failure) -> String {
+        switch failure {
+        case .unsupportedScheme:
+            message(for: URLError(.badURL))
+        case let .httpStatus(status):
+            String(format: String(localized: "The server returned HTTP %ld. Check the download link and try again."), status)
+        case .noBody:
+            String(localized: "The download finished without a file. Check the download link and try again.")
+        }
+    }
+
+    private static func message(for failure: URLError) -> String {
+        // Never include the failing URL: signed links can contain credentials.
+        switch failure.code {
+        case .badURL, .unsupportedURL:
+            String(localized: "Enter a complete http:// or https:// URL with one scheme and a server name.")
+        case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed, .internationalRoamingOff:
+            String(localized: "The network is unavailable or access is restricted. Check your connection and Fila's cellular data access in Settings, then try again.")
+        case .cannotFindHost, .dnsLookupFailed, .cannotConnectToHost:
+            String(localized: "The server could not be reached. Check the server address and your connection, then try again.")
+        case .timedOut:
+            String(localized: "The download timed out. Check your connection and try again.")
+        case .secureConnectionFailed, .serverCertificateHasBadDate, .serverCertificateUntrusted,
+             .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid,
+             .clientCertificateRejected, .clientCertificateRequired, .appTransportSecurityRequiresSecureConnection:
+            String(localized: "A secure connection could not be established. Check the server's HTTPS address and certificate.")
+        case .cancelled:
+            String(localized: "Cancelled.")
+        default:
+            String(format: String(localized: "The network request failed (error %ld). Try again."), failure.code.rawValue)
         }
     }
 

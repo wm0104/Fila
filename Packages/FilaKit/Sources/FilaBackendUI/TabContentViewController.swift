@@ -82,6 +82,12 @@
             nil
         }
 
+        /// What a tap on the current crumb opens instead of a menu, for a
+        /// screen that fills it with a panel it draws itself.
+        open var currentCrumbTap: (() -> Void)? {
+            nil
+        }
+
         /// The current crumb's long-press menu. Ordinary taps keep
         /// `currentCrumbMenu`; ancestors remain navigation targets.
         open var currentCrumbLongPressMenu: UIMenu? {
@@ -119,6 +125,7 @@
         private lazy var ownPathBar = PathBarView().then {
             $0.onSelect = { [weak self] crumb in self?.selectDecorationCrumb(crumb) }
             $0.currentMenu = currentCrumbMenu
+            $0.currentTap = currentCrumbTap
             $0.currentLongPressMenu = currentCrumbLongPressMenu
         }
 
@@ -205,9 +212,9 @@
         /// has no bar to hold it. Opened over this page's window.
         public var settingsMenuElement: UIMenuElement {
             UIMenu(options: .displayInline, children: [
-                UIAction(title: String(localized: "Settings", bundle: .module), image: UIImage(systemName: "gearshape")) { [weak self] _ in
-                    guard let self else { return }
-                    BackendScreens.shell?.presentSettings(from: self)
+                UIDeferredMenuElement.uncached { [weak self] done in
+                    guard let self, let shell = BackendScreens.shell else { return done([]) }
+                    done([shell.settingsMenu(from: self)])
                 },
             ])
         }

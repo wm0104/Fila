@@ -185,6 +185,10 @@ final class AppBackendShell: BackendShell {
         }
     }
 
+    func settingsMenu(from presenter: UIViewController) -> UIMenu {
+        SettingsMenu.menu(from: presenter)
+    }
+
     /// Whether `top` is already the sheet of that screen: a second tap while
     /// it was on its way must not stack another.
     private static func shows(_ screen: UIViewController.Type, _ top: UIViewController) -> Bool {

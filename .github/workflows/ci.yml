@@ -8,6 +8,9 @@ on:
   push:
     branches:
       - main
+      # The branch features are proven on before they reach `main`: a push
+      # there builds the same packages, so an install test needs no merge.
+      - test
   pull_request:
   workflow_dispatch:
 
@@ -39,7 +42,7 @@ env:
   # higher one, which is the failure the packaging notes describe as "a plist
   # change that does not take". The floor carries the counter past the old
   # workflow's last run. Raise it, never lower it.
-  BUILD_NUMBER_FLOOR: "100"
+  BUILD_NUMBER_FLOOR: "300"
 
 jobs:
   test:
@@ -57,6 +60,10 @@ jobs:
         run: python3 -m unittest discover -s Scripts/Tests -v
       - name: Run host tests
         run: make harness
+      - name: Test app paged search
+        run: python3 Scripts/test-app-search.py
+      - name: Test app text matching and encoding
+        run: python3 Scripts/test-app-viewer.py
 
   # The two compositions are two cold builds of the same sources into two
   # DerivedData directories — neither reuses anything of the other's — so

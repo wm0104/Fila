@@ -1,3 +1,4 @@
+import FilaClient
 import FilaProtocol
 import Then
 import UIKit
@@ -51,6 +52,12 @@ extension UIViewController {
 
     /// The same dispatcher when the caller already holds the item's details.
     func openFile(_ details: FileDetails, session: FileSession, gallery: ImageGallery? = nil) async {
+        if details.node.kind == .regular,
+           (details.path as NSString).pathExtension.lowercased() == ConfigurationBackup.fileExtension
+        {
+            ConfigurationBackupController.restore(path: details.path, from: self)
+            return
+        }
         let shell = shell
         let navigation = navigationController ?? shell?.content.navigation
         let source = navigation?.topViewController

@@ -206,6 +206,17 @@ final class TabNavigationController: UINavigationController {
         if refusesRemoving(popped) {
             return nil
         }
+        // A detail preview can cover a dirty editor; a multi-level pop must not discard it.
+        if let viewer = popped.compactMap({ $0 as? ViewerContainerViewController }).last(where: { $0.isModalInPresentation }),
+           let confirm = viewer.confirmReplacement
+        {
+            let source = topViewController
+            confirm({}, { [weak self, weak source, weak destination] in
+                guard let self, let source, let destination, topViewController === source else { return }
+                _ = popNow(to: destination, animated: animated)
+            })
+            return nil
+        }
         dropPendingTransitions()
         owner?.prepareNavigationItems(for: destination, in: self, ancestors: Array(viewControllers.prefix(index)))
         transition(to: destination, animated: animated, onto: topViewController) { [weak self] animated in
