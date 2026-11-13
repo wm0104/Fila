@@ -91,29 +91,42 @@ extension TextViewerViewController {
         let highlightedRange = activeFindTerm == term ? findResult?.range : nil
         activeFindTerm = term
         let selection = textView.selectedRange
-        let ranges: [NSRange]
-        if all {
-            guard let batch = TextSearch.replacementRanges(textView.text, term: term, matchCase: matchesCase) else {
+        let prepared: TextReplacement.Prepared
+        switch TextReplacement.prepare(
+            textView.text, term: term, with: replacement, matchCase: matchesCase,
+            target: all ? .all : .current(highlightedRange: highlightedRange, selection: selection),
+            encoding: encoding, usesCRLF: usesCRLF, byteLimit: Int(ViewerLimits.editableTextByteCount),
+            lineByteLimit: ViewerLimits.textLineByteCount,
+        ) {
+        case let .success(result):
+            guard let result else {
+                if all { showFindResult(nil) }
+                else { find(term, forwards: true) }
+                return
+            }
+            prepared = result
+        case let .failure(failure):
+            switch failure {
+            case .tooManyMatches:
                 presentMessage(
                     String(localized: "Unable to Replace"),
                     message: String(localized: "Too many matches to replace at once. Use a more specific search."),
                 )
-                return
+            case .tooLarge:
+                presentMessage(
+                    String(localized: "Unable to Replace"),
+                    message: String(localized: "Replacement would make the document too large to edit."),
+                )
+            case .unsupportedEncoding:
+                presentMessage(
+                    String(localized: "Unable to Replace"),
+                    message: String(localized: "Some characters you typed cannot be saved in this file’s encoding. Remove them and try again."),
+                )
             }
-            ranges = batch
-        } else {
-            guard let current = TextSearch.replacementRange(textView.text, term: term, matchCase: matchesCase,
-                                                            highlightedRange: highlightedRange, selection: selection) else {
-                find(term, forwards: true)
-                return
-            }
-            ranges = [current]
-        }
-        guard !ranges.isEmpty else {
-            showFindResult(nil)
             return
         }
-        guard let projected = validatedReplacement(ranges, with: replacement) else { return }
+        let projected = prepared.text
+        let ranges = prepared.ranges
         if (projected as NSString) != (textView.text as NSString) {
             if !all { textView.selectedRange = ranges[0] }
             // setState records one native Undo without the batch setter's recursive undo-group closure.

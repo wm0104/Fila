@@ -580,57 +580,69 @@ final class FileActions {
 
     private func buildDeb(_ directory: String, layout: DebianPackageBuilder.Layout, architecture: DebianPackageBuilder.Architecture, control: String, expecting identity: FileIdentity) {
         Task {
-            var saved = false
             do {
                 let name = (directory as NSString).lastPathComponent
                 let stem = name.hasSuffix(".deb") ? String(name.dropLast(4)) : name
                 let parent = (directory as NSString).deletingLastPathComponent
                 let destination = try await freePath(base: stem, extension: "deb", in: parent)
-                guard try await saveControl(control, in: layout, expecting: identity) else { return }
-                saved = true
-                NotificationCenter.default.post(name: .filaJobFinished, object: [directory])
-                guard let presenter = activePresenter else { return }
-                try await ProgressCard.run(
-                    title: String(localized: "Packing the Package"),
-                    message: name,
-                    // Every step writes its own file and renames it into place,
-                    // so a cancel would leave a complete package or none.
-                    cancellable: false,
-                    from: presenter,
-                ) { update in
-                    // The card's updater is main-actor bound; the work is not,
-                    // so each line hops back rather than holding the build on
-                    // the main thread.
-                    let report: @Sendable (String) -> Void = { message in
-                        Task { @MainActor in update(message) }
+                let outcome = await DebianPackageBuildOperation.run(control: control, expecting: identity) { text, loaded in
+                    guard try await saveControl(text, in: layout, expecting: loaded) else { return false }
+                    NotificationCenter.default.post(name: .filaJobFinished, object: [directory])
+                    return true
+                } build: { text in
+                    guard let presenter = activePresenter else { return false }
+                    try await ProgressCard.run(
+                        title: String(localized: "Packing the Package"),
+                        message: name,
+                        // Every step writes its own file and renames it into place,
+                        // so a cancel would leave a complete package or none.
+                        cancellable: false,
+                        from: presenter,
+                    ) { update in
+                        // The card's updater is main-actor bound; the work is not,
+                        // so each line hops back rather than holding the build on
+                        // the main thread.
+                        let report: @Sendable (String) -> Void = { message in
+                            Task { @MainActor in update(message) }
+                        }
+                        try await DebianPackageBuilder.build(
+                            .init(
+                                layout: layout,
+                                architecture: architecture,
+                                version: "",
+                                destination: destination,
+                                controlText: text,
+                            ),
+                            session: self.session,
+                            progress: report,
+                        )
                     }
-                    try await DebianPackageBuilder.build(
-                        .init(
-                            layout: layout,
-                            architecture: architecture,
-                            version: "",
-                            destination: destination,
-                            controlText: control,
-                        ),
-                        session: self.session,
-                        progress: report,
-                    )
+                    return true
                 }
-                Toast.show(String(localized: "Packed “\((destination as NSString).lastPathComponent)”"))
-                NotificationCenter.default.post(name: .filaJobFinished, object: [parent])
+                switch outcome {
+                case .kept, .saved: return
+                case .packed:
+                    Toast.show(String(localized: "Packed “\((destination as NSString).lastPathComponent)”"))
+                    NotificationCenter.default.post(name: .filaJobFinished, object: [parent])
+                case let .failed(error, saved):
+                    if let failure = error as? DebianPackageBuilder.Failure {
+                        activePresenter?.presentMessage(
+                            String(localized: "The Package Was Not Built"),
+                            message: saved ? String(localized: "The plugin information was saved, but packing failed. \(failure.message)") : failure.message,
+                        )
+                    } else if saved {
+                        activePresenter?.presentMessage(
+                            String(localized: "The Package Was Not Built"),
+                            message: String(localized: "The plugin information was saved, but packing failed. \(FailureMessage.text(for: error))"),
+                        )
+                    } else { report(error) }
+                }
             } catch let failure as DebianPackageBuilder.Failure {
                 activePresenter?.presentMessage(
                     String(localized: "The Package Was Not Built"),
-                    message: saved ? String(localized: "The plugin information was saved, but packing failed. \(failure.message)") : failure.message,
+                    message: failure.message,
                 )
-            } catch {
-                if saved {
-                    activePresenter?.presentMessage(
-                        String(localized: "The Package Was Not Built"),
-                        message: String(localized: "The plugin information was saved, but packing failed. \(FailureMessage.text(for: error))"),
-                    )
-                } else { report(error) }
-            }
+            } catch { report(error) }
         }
     }
 

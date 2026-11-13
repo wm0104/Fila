@@ -48,7 +48,7 @@ final class TextViewerViewController: TabContentViewController {
 
     /// What the bytes decoded as, and what a save re-encodes with, byte-order
     /// mark included. See `TextEncoding`.
-    private var encoding = TextEncoding(encoding: .utf8)
+    private(set) var encoding = TextEncoding(encoding: .utf8)
     /// The file as it was read, or as the last save left it. See
     /// `AtomicSave.save`.
     private var loadedIdentity: FileIdentity?
@@ -57,7 +57,7 @@ final class TextViewerViewController: TabContentViewController {
     private var isTruncated = false
     /// The file broke every line with CRLF, so a save writes the breaks the
     /// editor inserted as CRLF too rather than leaving the file mixed.
-    private var usesCRLF = false
+    private(set) var usesCRLF = false
     /// False for a truncated file and for one that could not be read at all.
     private var canEdit = false
     private var isEditingFile = false
@@ -461,33 +461,6 @@ final class TextViewerViewController: TabContentViewController {
         hasUnsavedChanges = !TextEncoding.exactlyEqual(text, savedText)
         refreshFindHighlights()
         refreshBarItems()
-    }
-
-    func validatedReplacement(_ ranges: [NSRange], with replacement: String) -> String? {
-        let limit = Int(ViewerLimits.editableTextByteCount)
-        // Bound the engine's UTF-8 allocation separately from the original on-disk encoding.
-        guard let text = TextSearch.replacing(textView.text, ranges: ranges, with: replacement, byteLimit: limit * 4,
-                                            lineByteLimit: ViewerLimits.textLineByteCount) else {
-            replacementTooLarge()
-            return nil
-        }
-        let saved = usesCRLF ? TextEncoding.restoringCRLF(text) : text
-        guard let count = encoding.byteCount(saved) else {
-            presentMessage(
-                String(localized: "Unable to Replace"),
-                message: String(localized: "Some characters you typed cannot be saved in this file’s encoding. Remove them and try again."),
-            )
-            return nil
-        }
-        guard count <= limit else { replacementTooLarge(); return nil }
-        return text
-    }
-
-    private func replacementTooLarge() {
-        presentMessage(
-            String(localized: "Unable to Replace"),
-            message: String(localized: "Replacement would make the document too large to edit."),
-        )
     }
 
     private func startEditing() {
