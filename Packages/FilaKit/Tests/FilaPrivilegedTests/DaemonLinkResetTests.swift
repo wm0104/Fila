@@ -22,7 +22,10 @@
     struct DaemonLinkResetTests {
         @Test
         func `A stale link's failure leaves its replacement alone`() throws {
-            let service = DaemonFileService(streams: FileEventStreams())
+            let queue = DispatchQueue(label: "fila.reset-test")
+            queue.suspend()
+            defer { queue.resume() }
+            let service = DaemonFileService(streams: FileEventStreams(), queue: queue)
             let stale = try service.activeConnection()
             // The first failing reply on the old link drops it.
             service.invalidate(generation: stale.generation)
@@ -38,29 +41,51 @@
         /// produces — arrives after the replacement may already be running
         /// jobs, and reporting it would end those jobs' rows as lost.
         @Test
-        func `Only the newest link's end is reported as a lost link`() throws {
-            let service = DaemonFileService(streams: FileEventStreams())
+        func `Loss reports its source generation once, not its replacement`() throws {
+            let queue = DispatchQueue(label: "fila.reset-test")
+            queue.suspend()
+            defer { queue.resume() }
+            let service = DaemonFileService(streams: FileEventStreams(), queue: queue)
+            let losses = LossCount()
+            service.onLinkLost = { losses.bump($0) }
             let stale = try service.activeConnection()
-            #expect(service.isNewest(stale.generation))
             service.invalidate(generation: stale.generation)
-            // Retired, and nothing built since: its end is still the news.
-            #expect(service.isNewest(stale.generation))
             let replacement = try service.activeConnection()
-            #expect(!service.isNewest(stale.generation))
-            #expect(service.isNewest(replacement.generation))
+            service.invalidate(generation: stale.generation)
+            #expect(losses.generations == [stale.generation])
+            #expect(replacement.generation > stale.generation)
+            #expect(try service.activeConnection().connection === replacement.connection)
         }
 
-        /// Its own end is then never reported, so the link a failing reply
-        /// retires is reported lost at that moment, before anything can
-        /// replace it: the jobs it carried died with it.
+        /// A reply and its own cancellation event retire the same generation;
+        /// only the first may report its lost jobs.
         @Test
-        func `Retiring a dead link reports it lost before a replacement exists`() throws {
-            let service = DaemonFileService(streams: FileEventStreams())
+        func `Retiring a dead link reports exactly one loss`() throws {
+            let queue = DispatchQueue(label: "fila.reset-test")
+            queue.suspend()
+            defer { queue.resume() }
+            let service = DaemonFileService(streams: FileEventStreams(), queue: queue)
             let losses = LossCount()
-            service.onLinkLost = { losses.bump() }
+            service.onLinkLost = { losses.bump($0) }
             let stale = try service.activeConnection()
             service.invalidate(generation: stale.generation)
-            #expect(losses.value >= 1)
+            service.invalidate(generation: stale.generation)
+            #expect(losses.generations == [stale.generation])
+        }
+
+        @Test
+        func `An old cancel never creates or targets a replacement connection`() async throws {
+            let queue = DispatchQueue(label: "fila.reset-test")
+            queue.suspend()
+            defer { queue.resume() }
+            let service = DaemonFileService(streams: FileEventStreams(), queue: queue)
+            let stale = try service.activeConnection()
+            service.invalidate(generation: stale.generation)
+            let replacement = try service.activeConnection()
+            await #expect(throws: FilaFailure.self) {
+                try await service.cancelJob(.init(value: 1, generation: stale.generation))
+            }
+            #expect(try service.activeConnection().connection === replacement.connection)
         }
 
         @Test
@@ -77,13 +102,13 @@
 
     private final class LossCount: @unchecked Sendable {
         private let lock = NSLock()
-        private var count = 0
-        func bump() {
-            lock.lock(); count += 1; lock.unlock()
+        private var values: [UInt64] = []
+        func bump(_ generation: UInt64) {
+            lock.lock(); values.append(generation); lock.unlock()
         }
 
-        var value: Int {
-            lock.lock(); defer { lock.unlock() }; return count
+        var generations: [UInt64] {
+            lock.lock(); defer { lock.unlock() }; return values
         }
     }
 #endif

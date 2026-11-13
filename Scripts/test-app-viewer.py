@@ -10,9 +10,10 @@ with tempfile.TemporaryDirectory(prefix='fila-viewer-tests-') as directory:
     package = Path(directory)
     sources = package / 'Tests' / 'FilaViewerTests'
     sources.mkdir(parents=True)
-    for name in ['Text/TextSearch.swift', 'Text/TextEncoding.swift']:
+    for name in ['Text/TextSearch.swift', 'Text/TextEncoding.swift', 'Shared/AtomicSaveOperation.swift']:
         shutil.copy2(repo / 'Fila/Interface/Viewer' / name, sources / Path(name).name)
     shutil.copy2(repo / 'Tests/Viewer/ViewerTextTests.swift', sources / 'ViewerTextTests.swift')
+    shutil.copy2(repo / 'Tests/Viewer/AtomicSaveTests.swift', sources / 'AtomicSaveTests.swift')
     (package / 'Package.swift').write_text('''// swift-tools-version: 6.0
 import PackageDescription
 let package = Package(
@@ -21,4 +22,4 @@ let package = Package(
     targets: [.testTarget(name: "FilaViewerTests", swiftSettings: [.swiftLanguageMode(.v5)])]
 )
 ''')
-    subprocess.run(['swift', 'test', '--package-path', str(package)], check=True)
+    subprocess.run(['swift', 'test', '--package-path', str(package)], check=True, timeout=600)

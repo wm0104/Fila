@@ -51,6 +51,18 @@ enum TextSearch {
         }
     }
 
+    /// The visible current match survives focus moving to the replacement field.
+    static func replacementRange(_ text: String, term: String, matchCase: Bool,
+                                 highlightedRange: NSRange?, selection: NSRange) -> NSRange? {
+        let target = highlightedRange ?? selection
+        var current: NSRange?
+        enumerate(text, term: term, matchCase: matchCase) { range in
+            if range == target { current = range }
+            return range.location < target.location
+        }
+        return current
+    }
+
     /// A partial batch must never be applied as though it replaced everything.
     static func replacementRanges(_ text: String, term: String, matchCase: Bool, limit: Int = 100_000) -> [NSRange]? {
         var ranges: [NSRange] = []
@@ -75,17 +87,32 @@ enum TextSearch {
         return added == 0 || ranges.count <= (byteLimit - remaining) / added
     }
 
-    static func replacing(_ text: String, ranges: [NSRange], with replacement: String, byteLimit: Int) -> String? {
+    static func replacing(_ text: String, ranges: [NSRange], with replacement: String, byteLimit: Int, lineByteLimit: Int = .max) -> String? {
         guard fitsReplacement(text, ranges: ranges, replacement: replacement, byteLimit: byteLimit) else { return nil }
         let source = text as NSString
         var result = ""
+        var lineBytes = 0
+        func append(_ part: String) -> Bool {
+            if lineByteLimit != .max {
+                for byte in part.utf8 {
+                    if byte == 10 || byte == 13 {
+                        lineBytes = 0
+                    } else {
+                        guard lineBytes < lineByteLimit else { return false }
+                        lineBytes += 1
+                    }
+                }
+            }
+            result += part
+            return true
+        }
         var position = 0
         for range in ranges {
-            result += source.substring(with: NSRange(location: position, length: range.location - position))
-            result += replacement
+            guard append(source.substring(with: NSRange(location: position, length: range.location - position))),
+                  append(replacement) else { return nil }
             position = NSMaxRange(range)
         }
-        result += source.substring(from: position)
+        guard append(source.substring(from: position)) else { return nil }
         return result
     }
 }

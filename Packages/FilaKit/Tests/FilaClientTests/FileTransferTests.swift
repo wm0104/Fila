@@ -359,8 +359,8 @@ struct FileTransferTests {
         #expect(names(destination, "elsewhere").isEmpty, "nothing was written where the link points")
     }
 
-    @Test
-    func `A source that grew before it was read is copied whole, and a move keeps it`() async throws {
+    @Test(arguments: [false, true])
+    func `A source that grew before it was read is copied whole, and a move keeps it`(requiresExactLength: Bool) async throws {
         source.file("log.txt", contents: "line one\n")
         let hooked = HookedService(inner: adapter(source))
         let appended = source.path("log.txt")
@@ -371,11 +371,13 @@ struct FileTransferTests {
             handle?.write(Data("line two\n".utf8))
             try? handle?.close()
         }
-        let copy = try await run(request(["log.txt"], mode: .copy, source: hooked))
+        let target = HookedService(inner: adapter(destination))
+        target.requiresExactLength = requiresExactLength
+        let copy = try await run(request(["log.txt"], mode: .copy, source: hooked, destination: target))
         #expect(copy.succeeded, "\(String(describing: copy.failure))")
         #expect(contents(destination, "log.txt") == Data("line one\nline two\n".utf8))
 
-        let move = try await run(request(["log.txt"], mode: .move, policy: .replace, source: hooked))
+        let move = try await run(request(["log.txt"], mode: .move, policy: .replace, source: hooked, destination: target))
         let shortfall = try #require(move.failure as? TransferShortfall)
         #expect(try shortfall.retained == [ServicePath("log.txt")])
         #expect(contents(source, "log.txt") == Data("line one\nline two\nline two\n".utf8), "kept")
@@ -409,6 +411,7 @@ final class HookedService: WritableFileService, DescriptorFileService, @unchecke
     var afterOpen: (@Sendable (ServicePath) -> Void)?
     var beforeRemoval: (@Sendable (ServicePath) -> Void)?
     var refuseRemovals = false
+    var requiresExactLength = false
     struct Refused: Error {}
 
     init(inner: LocalFileServiceAdapter) {
@@ -442,6 +445,10 @@ final class HookedService: WritableFileService, DescriptorFileService, @unchecke
     }
 
     func writeFile(from descriptor: Int32, size: Int64, to destination: ServicePath, policy: PublishPolicy, progress: @escaping @Sendable (TransferProgress) -> Void) async throws {
+        if requiresExactLength {
+            var status = stat()
+            guard fstat(descriptor, &status) == 0, status.st_size == size else { throw Refused() }
+        }
         try await inner.writeFile(from: descriptor, size: size, to: destination, policy: policy, progress: progress)
     }
 

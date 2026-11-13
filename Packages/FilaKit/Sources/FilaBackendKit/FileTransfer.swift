@@ -574,21 +574,24 @@ private final class Run {
                 unlink(stagingFile.path)
             }
         }
+        var actual = stat()
+        guard fstat(descriptor, &actual) == 0 else {
+            throw StagingFailure(code: errno, path: source.description)
+        }
+        guard actual.st_mode & S_IFMT == S_IFREG, actual.st_size >= 0 else {
+            throw StagingFailure(code: EINVAL, path: source.description)
+        }
         try await request.destination.service.writeFile(
             from: descriptor,
-            size: size,
+            size: Int64(actual.st_size),
             to: target,
             policy: request.policy,
             progress: meter.legCounter(),
         )
-        // Length is the evidence a move deletes the source on. The write
-        // pumps to end of file, so a source that changed size before it was
-        // read publishes at its new length — complete, and confirmed by
-        // asking the source again. A length neither the plan nor the source
-        // explains is a server that wrote something else: not trusted, and
-        // the source is kept.
+        // The opened file, not a stale listing, supplies the upload length.
+        // A streaming destination may still read a later growth to EOF.
         let published = try await request.destination.service.details(target)
-        guard let found = published.size, found != size else { return size }
+        guard let found = published.size, found != Int64(actual.st_size) else { return Int64(actual.st_size) }
         let current = try? await request.source.service.details(source)
         guard current?.kind == .file, current?.size == found else {
             throw TransferRefusal.sizeMismatch(target, expected: size, found: found)

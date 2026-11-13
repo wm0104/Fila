@@ -78,24 +78,38 @@ public struct DirectoryPage: Sendable {
     }
 }
 
-public struct JobUpdate: Sendable {
-    public let identifier: UInt64
-    public let event: JobEvent
+/// Wire identifiers are scoped to the connection that issued them. Zero is
+/// the in-process backend, which has no connection to lose.
+public struct LocalJobIdentifier: Hashable, Sendable {
+    public let value: UInt64
+    public let generation: UInt64
 
-    public init(identifier: UInt64, event: JobEvent) {
-        self.identifier = identifier
-        self.event = event
+    public init(value: UInt64, generation: UInt64 = 0) {
+        self.value = value
+        self.generation = generation
     }
 }
 
+public struct JobUpdate: Sendable {
+    public let identifier: LocalJobIdentifier
+    public let event: JobEvent
+
+    public init(identifier: LocalJobIdentifier, event: JobEvent) {
+        self.identifier = identifier
+        self.event = event
+    }
+
+}
+
 public struct SearchUpdate: Sendable {
-    public let identifier: UInt64
+    public let identifier: LocalJobIdentifier
     public let batch: SearchBatch
 
-    public init(identifier: UInt64, batch: SearchBatch) {
+    public init(identifier: LocalJobIdentifier, batch: SearchBatch) {
         self.identifier = identifier
         self.batch = batch
     }
+
 }
 
 /// The two unsolicited streams a local file layer reports on, built once and
@@ -185,7 +199,7 @@ public protocol LocalFileAccess: AnyObject, Sendable {
     /// that process was running for us. Set once, before the first request;
     /// it may fire more than once for one disconnection, so what it does
     /// must be idempotent. An in-process service never calls it.
-    var onLinkLost: (@Sendable () -> Void)? { get set }
+    var onLinkLost: (@Sendable (UInt64) -> Void)? { get set }
 
     /// Which side answers, and whether that side is root.
     func hello() async throws -> LocalHello
@@ -245,8 +259,8 @@ public protocol LocalFileAccess: AnyObject, Sendable {
     /// `searchResults` while its progress and completion arrive on
     /// `jobEvents` like any other job's. Stopping a search early is
     /// `cancelJob`.
-    func startJob(_ job: JobRequest) async throws -> UInt64
-    func cancelJob(_ identifier: UInt64) async throws
+    func startJob(_ job: JobRequest) async throws -> LocalJobIdentifier
+    func cancelJob(_ identifier: LocalJobIdentifier) async throws
 
     /// The *other* process's log after `sequence`, and the level it should
     /// capture at from now on. Empty when there is no other process: the

@@ -73,5 +73,9 @@ final class ApplicationCapabilityProxy: ApplicationCapability {
         await backend?.install(packageAt: url) ?? .unsupported("applications backend not available")
     }
 
+    func openInTrollStore(packageAt url: URL) async -> TrollStoreHandoffOutcome {
+        await backend?.openInTrollStore(packageAt: url) ?? .unavailable
+    }
+
     struct ApplicationsUnavailable: Error {}
 }

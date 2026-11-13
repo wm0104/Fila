@@ -511,17 +511,17 @@ final class FileActions {
             do {
                 let names = try await DirectoryReader.entries(in: directory, session: session).map(\.name)
                 let layout = try DebianPackageBuilder.layout(in: directory, names: names)
-                let text = try await DebianPackageBuilder.controlText(in: layout, session: session)
+                let snapshot = try await DebianPackageBuilder.controlSnapshot(in: layout, session: session)
                 let declared = (try? await DebianPackageBuilder.declaredArchitecture(of: layout, session: session)) ?? nil
                 guard let presenter = activePresenter else { return }
                 ControlEditorViewController.present(
                     from: presenter,
-                    text: text,
+                    text: snapshot.text,
                     declared: declared?.rawValue ?? "—",
                 ) { [self] edited in
                     Task {
                         do {
-                            try await DebianPackageBuilder.saveControl(edited, in: layout, session: session)
+                            guard try await saveControl(edited, in: layout, expecting: snapshot.identity) else { return }
                             Toast.show(String(localized: "Saved"))
                             NotificationCenter.default.post(name: .filaJobFinished, object: [directory])
                         } catch let failure as DebianPackageBuilder.Failure {
@@ -550,10 +550,45 @@ final class FileActions {
             do {
                 let names = try await DirectoryReader.entries(in: directory, session: session).map(\.name)
                 let layout = try DebianPackageBuilder.layout(in: directory, names: names)
+                let snapshot = try await DebianPackageBuilder.controlSnapshot(in: layout, session: session)
+                let information = try DebianPackageInformation(control: snapshot.text, architecture: architecture.rawValue)
+                guard let presenter = activePresenter else { return }
+                DebianPackageInformationViewController.present(from: presenter, information: information) { [self] edited in
+                    buildDeb(directory, layout: layout, architecture: architecture, control: edited, expecting: snapshot.identity)
+                }
+            } catch let failure as DebianPackageBuilder.Failure {
+                activePresenter?.presentMessage(String(localized: "The Package Was Not Built"), message: failure.message)
+            } catch { report(error) }
+        }
+    }
+
+    private func saveControl(_ text: String, in layout: DebianPackageBuilder.Layout, expecting identity: FileIdentity) async throws -> Bool {
+        guard let presenter = activePresenter else { return false }
+        let outcome = try await AtomicSaveOperation.run(path: layout.control, expecting: identity) { path in
+            let details = try await self.session.perform { try await $0.details(of: path) }
+            return .init(path: details.path, identity: FileIdentity(details.node))
+        } confirm: {
+            await AtomicSave.confirmReplacement(from: presenter)
+        } publish: { path in
+            var current = layout
+            current.control = path
+            return try await DebianPackageBuilder.saveControl(text, in: current, session: self.session)
+        }
+        if case .saved = outcome { return true }
+        return false
+    }
+
+    private func buildDeb(_ directory: String, layout: DebianPackageBuilder.Layout, architecture: DebianPackageBuilder.Architecture, control: String, expecting identity: FileIdentity) {
+        Task {
+            var saved = false
+            do {
                 let name = (directory as NSString).lastPathComponent
                 let stem = name.hasSuffix(".deb") ? String(name.dropLast(4)) : name
                 let parent = (directory as NSString).deletingLastPathComponent
                 let destination = try await freePath(base: stem, extension: "deb", in: parent)
+                guard try await saveControl(control, in: layout, expecting: identity) else { return }
+                saved = true
+                NotificationCenter.default.post(name: .filaJobFinished, object: [directory])
                 guard let presenter = activePresenter else { return }
                 try await ProgressCard.run(
                     title: String(localized: "Packing the Package"),
@@ -575,6 +610,7 @@ final class FileActions {
                             architecture: architecture,
                             version: "",
                             destination: destination,
+                            controlText: control,
                         ),
                         session: self.session,
                         progress: report,
@@ -585,9 +621,16 @@ final class FileActions {
             } catch let failure as DebianPackageBuilder.Failure {
                 activePresenter?.presentMessage(
                     String(localized: "The Package Was Not Built"),
-                    message: failure.message,
+                    message: saved ? String(localized: "The plugin information was saved, but packing failed. \(failure.message)") : failure.message,
                 )
-            } catch { report(error) }
+            } catch {
+                if saved {
+                    activePresenter?.presentMessage(
+                        String(localized: "The Package Was Not Built"),
+                        message: String(localized: "The plugin information was saved, but packing failed. \(FailureMessage.text(for: error))"),
+                    )
+                } else { report(error) }
+            }
         }
     }
 

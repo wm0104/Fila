@@ -52,7 +52,7 @@ VERSION_CONFIG      := $(CONFIG_DIR)/Version.xcconfig
 BASE_CONFIG         := $(CONFIG_DIR)/Base.xcconfig
 xcconfig_setting     = $(strip $(shell awk -F= '$$1 ~ /^[[:space:]]*$(1)[[:space:]]*$$/ { gsub(/[[:space:]]/, "", $$2); print $$2; exit }' "$(VERSION_CONFIG)"))
 base_xcconfig_setting = $(strip $(shell awk -F= '$$1 ~ /^[[:space:]]*$(1)[[:space:]]*$$/ { gsub(/[[:space:]]/, "", $$2); print $$2; exit }' "$(BASE_CONFIG)"))
-APP_VERSION         := $(call xcconfig_setting,MARKETING_VERSION)
+APP_VERSION         := $(call xcconfig_setting,MARKETING_VERSION)$(call xcconfig_setting,FILA_VERSION_SUFFIX)
 BUILD_NUMBER        := $(call xcconfig_setting,CURRENT_PROJECT_VERSION)
 MINIMUM_IOS_VERSION := $(call base_xcconfig_setting,IPHONEOS_DEPLOYMENT_TARGET)
 # The SDK a device build links against decides how the app is laid out on an
@@ -129,7 +129,7 @@ XCODEBUILD = $(XCODEBUILD_BASE) \
 SIMULATOR_XCODEBUILD = $(XCODEBUILD_BASE) \
 	CODE_SIGNING_ALLOWED=YES CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=""
 
-ifeq ($(APP_VERSION),)
+ifeq ($(call xcconfig_setting,MARKETING_VERSION),)
 $(error MARKETING_VERSION is missing from Configuration/Version.xcconfig)
 endif
 ifeq ($(BUILD_NUMBER),)
@@ -228,7 +228,8 @@ check:
 	@for xcconfig in Version Base Development Release; do \
 		test -f "$(CONFIG_DIR)/$$xcconfig.xcconfig" || { echo "error: Configuration/$$xcconfig.xcconfig is missing" >&2; exit 66; }; \
 	done
-	@[[ "$(APP_VERSION)" =~ ^[0-9]+\.[0-9]+\.[0-9]+$$ ]] || { echo "error: MARKETING_VERSION must look like 1.2.3, got '$(APP_VERSION)'" >&2; exit 65; }
+	@[[ "$(call xcconfig_setting,MARKETING_VERSION)" =~ ^[0-9]+\.[0-9]+\.[0-9]+$$ ]] || { echo "error: MARKETING_VERSION must look like 1.2.3" >&2; exit 65; }
+	@[[ "$(APP_VERSION)" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?$$ ]] || { echo "error: package version must look like 1.2.3 or 1.2.3-1, got '$(APP_VERSION)'" >&2; exit 65; }
 	@[[ "$(BUILD_NUMBER)" =~ ^[0-9]+$$ ]] || { echo "error: CURRENT_PROJECT_VERSION must be an integer, got '$(BUILD_NUMBER)'" >&2; exit 65; }
 	@[[ "$(MINIMUM_IOS_VERSION)" =~ ^[0-9]+\.[0-9]+$$ ]] || { echo "error: IPHONEOS_DEPLOYMENT_TARGET must look like 15.0, got '$(MINIMUM_IOS_VERSION)'" >&2; exit 65; }
 	@grep -qE '(MARKETING_VERSION|CURRENT_PROJECT_VERSION) =' "$(PROJECT)/project.pbxproj" \

@@ -55,6 +55,13 @@ final class DescriptorFile {
         try await DescriptorFile(descriptor: link.open(path, flags: flags, mode: mode))
     }
 
+    func currentIdentity() throws -> FileIdentity {
+        guard !isClosed else { throw ViewerFailure.readFailed(EBADF) }
+        var status = stat()
+        guard fstat(descriptor, &status) == 0 else { throw ViewerFailure.readFailed(errno) }
+        return FileIdentity(status)
+    }
+
     func close() {
         guard !isClosed else { return }
         isClosed = true

@@ -1,5 +1,7 @@
 import AlertController
+import Darwin
 import FilaBackendKit
+import FilaBackendUI
 import FilaProtocol
 import FilaTerminal
 import UIKit
@@ -7,36 +9,25 @@ import UIKit
 extension FileActions {
     /// One Install… entry, routed by format, each behind a card that says what
     /// is about to happen. A `.deb` runs the bootstrap's `dpkg -i` on a
-    /// terminal as root, so it needs the daemon and the Run setting like the
-    /// Run menu does. A `.tipa` is TrollStore's format and goes to TrollStore
-    /// through the share sheet: installd refuses a fake-signed bundle every
-    /// time, so there is nothing to try first (Roadmap → IPA installation).
-    /// An `.ipa` goes to installd through the applications module, which is
-    /// the route AppSync Unified opens; without it the refusal is reported as
-    /// such, and a build without the module offers no entry at all.
+    /// terminal as root, so it needs the daemon and the Run setting. Both app
+    /// formats prefer a targeted TrollStore handoff. When that is unavailable,
+    /// TIPA keeps Open With and IPA keeps its existing system-installer route.
     func installAction(_ path: String, node: FileNode, confirm: @escaping (@escaping () -> Void) -> Void) -> UIAction? {
         guard node.kind == .regular else { return nil }
-        let name = (path as NSString).lastPathComponent
         let install: () -> Void
         switch (path as NSString).pathExtension.lowercased() {
         case "deb":
             guard SystemCapabilities.runsPrograms else { return nil }
             install = { [self] in promptInstallPackage(path) }
         case "tipa":
-            install = { [self] in
-                confirmDestruction(
-                    title: String(localized: "Open in TrollStore?"),
-                    message: String(localized: "Choose TrollStore to install “\(name)” without the system installer."),
-                    confirm: String(localized: "Open"),
-                ) { self.share([path]) }
-            }
+            install = { [self] in promptTrollStore(path) { self.share([path]) } }
         case "ipa":
             // A sandboxed build has no InstallCoordination entitlement and
             // would copy the whole package only to be refused; the handshake
             // says which build this is, so the entry waits for it.
             guard let backend = session.hello?.backend, backend != .local(reach: .container),
                   let applications = SystemCapabilities.applications else { return nil }
-            install = { [self] in promptInstallApp(path, applications: applications) }
+            install = { [self] in promptTrollStore(path) { self.promptInstallApp(path, applications: applications) } }
         default:
             return nil
         }
@@ -44,6 +35,54 @@ extension FileActions {
             title: String(localized: "Install…"),
             image: UIImage(systemName: "arrow.down.app"),
         ) { _ in confirm(install) }
+    }
+
+    private func promptTrollStore(_ path: String, fallback: @escaping () -> Void) {
+        let name = (path as NSString).lastPathComponent
+        confirmDestruction(
+            title: String(localized: "Open in TrollStore?"),
+            message: String(localized: "Opens a copy of “\(name)” in TrollStore. The original file is kept."),
+            confirm: String(localized: "Open"),
+        ) {
+            Task { if await !self.openInTrollStore(path) { fallback() } }
+        }
+    }
+
+    /// Deliver into the receiver's Inbox first: TrollStore may still be
+    /// reading after Fila exits or sweeps its own temporary workspace.
+    private func openInTrollStore(_ path: String) async -> Bool {
+        guard let applications = SystemCapabilities.applications,
+              let location = await applications.locate(bundleIdentifier: "com.opa334.TrollStore"),
+              let dataPath = location.dataPath else { return false }
+        guard !Self.appInstallInFlight else {
+            FeedbackAlert.show(String(localized: "Installation in Progress"), message: String(localized: "Wait for the current installation to finish, then try again."))
+            return true
+        }
+        Self.appInstallInFlight = true
+        defer { Self.appInstallInFlight = false }
+        do {
+            let inbox = try await session.perform { try await TrollStoreInbox.prepare(dataPath: dataPath, access: $0) }
+            let staged = try await session.stage(path)
+            defer { try? FileManager.default.removeItem(at: staged.deletingLastPathComponent()) }
+            let unique = staged.deletingLastPathComponent().appendingPathComponent(UUID().uuidString + "." + (path as NSString).pathExtension.lowercased())
+            try FileManager.default.moveItem(at: staged, to: unique)
+            guard await FileDelivery.deliver([.local(unique.path)], into: .local(inbox), mode: .copy, from: activePresenter) else { return true }
+            let delivered = URL(fileURLWithPath: inbox).appendingPathComponent(unique.lastPathComponent)
+            switch await applications.openInTrollStore(packageAt: delivered) {
+            case .opened:
+                return true
+            case .unavailable:
+                // No document was sent. Only this unique delivered copy is ours.
+                try await session.perform { try await $0.remove(delivered.path, directory: false, overrideGuard: false) }
+                return false
+            case .failed, .unanswered:
+                FeedbackAlert.show(
+                    String(localized: "Cannot Install"),
+                    message: String(localized: "TrollStore did not confirm opening the file. The copy is kept at \(delivered.path). Check TrollStore before trying again."),
+                )
+                return true
+            }
+        } catch { report(error); return true }
     }
 
     /// Reads the package's identity first, and refuses Fila's own: its postinst

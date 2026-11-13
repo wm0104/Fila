@@ -60,7 +60,8 @@ def main():
     info = plistlib.loads((app / "Info.plist").read_bytes())
     wanted = {
         "CFBundleIdentifier": "wiki.qaq.fila", "CFBundleExecutable": "Fila",
-        "CFBundleShortVersionString": version,
+        "CFBundleShortVersionString": version.split("-", 1)[0],
+        "FilaVersion": version,
         "CFBundleVersion": setting("Version.xcconfig", "CURRENT_PROJECT_VERSION"),
         "MinimumOSVersion": setting("Base.xcconfig", "IPHONEOS_DEPLOYMENT_TARGET"),
         "CFBundleSupportedPlatforms": ["iPhoneOS"],
@@ -78,7 +79,7 @@ def main():
     template = "AppGroup.entitlements" if kind == "ipa" else "FilaSaveAction.entitlements"
     binary(action / "FilaSaveAction", entitlements(template, group), minimum)
     action_info = plistlib.loads((action / "Info.plist").read_bytes())
-    for key in ("CFBundleShortVersionString", "CFBundleVersion", "FilaAppGroupIdentifier", "MinimumOSVersion"):
+    for key in ("CFBundleShortVersionString", "CFBundleVersion", "FilaVersion", "FilaAppGroupIdentifier", "MinimumOSVersion"):
         if action_info.get(key) != info.get(key):
             raise ValueError(f"Save action {key} differs from containing app")
     if action_info.get("CFBundleIdentifier") != "wiki.qaq.fila.saveaction":

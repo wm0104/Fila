@@ -1,3 +1,4 @@
+import FilaClient
 import UIKit
 
 /// The delayed progress card, and the wait for it to be gone. Deletion,
@@ -40,7 +41,7 @@ final class JobCover {
     }
 
     /// A job's `started` hook: its row in `center`, once the job exists.
-    func show(job identifier: UInt64, in center: OperationCenter) {
+    func show(job identifier: LocalJobIdentifier, in center: OperationCenter) {
         guard let operation = center.operation(forJob: identifier) else { return }
         show(.operation(operation.id, in: center))
     }

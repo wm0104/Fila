@@ -94,7 +94,7 @@ public final class LocalFileService: LocalFileAccess, @unchecked Sendable {
     /// there is no connection to lose, and a job cannot die with one. If
     /// this ever grows a reader it needs a lock — the class is
     /// `@unchecked Sendable`.
-    public var onLinkLost: (@Sendable () -> Void)?
+    public var onLinkLost: (@Sendable (UInt64) -> Void)?
 
     /// Probed once, when this service is built, rather than per handshake: it
     /// is a syscall and a log line, the answer cannot change while the process
@@ -236,10 +236,11 @@ public final class LocalFileService: LocalFileAccess, @unchecked Sendable {
         try await run("xattr \(name) \(path)") { try self.operations.extendedAttribute(name, at: path) }
     }
 
-    public func startJob(_ job: JobRequest) async throws -> UInt64 {
+    public func startJob(_ job: JobRequest) async throws -> LocalJobIdentifier {
         try await run("startJob \(job.kind)") {
             let identifier = self.nextJobIdentifier
             self.nextJobIdentifier &+= 1
+            let handle = LocalJobIdentifier(value: identifier)
 
             let work: any RunningJob = job.kind.isArchive
                 ? ArchiveJob(request: job, operations: self.operations)
@@ -257,9 +258,9 @@ public final class LocalFileService: LocalFileAccess, @unchecked Sendable {
             let lane = job.kind == .search ? self.searchQueue : self.jobQueue
             lane.async {
                 let outcome = work.run { progress in
-                    self.streams.yield(JobUpdate(identifier: identifier, event: .progress(progress)))
+                    self.streams.yield(JobUpdate(identifier: handle, event: .progress(progress)))
                 } matches: { batch in
-                    self.streams.yield(SearchUpdate(identifier: identifier, batch: batch))
+                    self.streams.yield(SearchUpdate(identifier: handle, batch: batch))
                 } note: { line in
                     FilaLog.warning("job \(identifier): \(line)")
                 }
@@ -267,18 +268,19 @@ public final class LocalFileService: LocalFileAccess, @unchecked Sendable {
                     FilaLog.level(for: outcome.code),
                     "job \(identifier) \(outcome.path ?? "-") \(FilaLog.describe(outcome))",
                 )
-                self.streams.yield(JobUpdate(identifier: identifier, event: .completed(outcome, skipped: work.skippedItems)))
+                self.streams.yield(JobUpdate(identifier: handle, event: .completed(outcome, skipped: work.skippedItems)))
                 // Dropped after the completion is out, so a cancel that arrives
                 // in between still finds the job rather than silently doing
                 // nothing.
                 self.queue.async { self.jobs[identifier] = nil }
             }
-            return identifier
+            return handle
         }
     }
 
-    public func cancelJob(_ identifier: UInt64) async throws {
-        try await run("cancelJob \(identifier)") { self.jobs[identifier]?.cancel() }
+    public func cancelJob(_ identifier: LocalJobIdentifier) async throws {
+        guard identifier.generation == 0 else { throw FilaFailure(errno: ECONNRESET) }
+        try await run("cancelJob \(identifier.value)") { self.jobs[identifier.value]?.cancel() }
     }
 
     /// There is no daemon, so there is no daemon log. The app's own lines are

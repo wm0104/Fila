@@ -304,6 +304,29 @@ struct WebDAVLoopbackTests {
         await service.disconnect()
     }
 
+    @Test(arguments: [false, true])
+    @MainActor
+    func `Uploads use the opened file length, not stale or unknown listing sizes`(hidesSize: Bool) async throws {
+        let loopback = try await LoopbackServer()
+        let local = Scratch(), staging = Scratch()
+        local.file("growing.bin", contents: "old")
+        let bytes = pattern(65536 + 17)
+        let adapter = LocalFileServiceAdapter(access: LocalFileService(), rootPath: local.root, observation: DirectoryObservation())
+        let source = GrowingUploadSource(inner: adapter, url: URL(fileURLWithPath: local.path("growing.bin")), bytes: bytes, hidesSize: hidesSize)
+        let remote = loopback.service()
+        let request = try TransferRequest(
+            source: TransferSource(backend: BackendID("local"), service: source, paths: [ServicePath("growing.bin")]),
+            destination: TransferDestination(backend: BackendID("webdav"), service: remote, directory: .root),
+            mode: .copy, policy: .failIfExists,
+        )
+        let result = await FileTransfer.run(request, staging: URL(fileURLWithPath: staging.root)) { _ in }
+        #expect(result.succeeded, "\(String(describing: result.failure))")
+        #expect(loopback.data("growing.bin") == bytes)
+        #expect(FileManager.default.contents(atPath: local.path("growing.bin")) == bytes)
+        #expect((try? FileManager.default.contentsOfDirectory(atPath: staging.root)) == [])
+        await remote.disconnect()
+    }
+
     @Test
     @MainActor
     func `A tree moves from a local root to the server and back, complete at each end`() async throws {
@@ -345,4 +368,37 @@ struct WebDAVLoopbackTests {
         #expect((try? FileManager.default.contentsOfDirectory(atPath: staging.root)) == [])
         await remote.disconnect()
     }
+}
+
+/// Changes the real inode after planning, before the production upload reads it.
+private final class GrowingUploadSource: DescriptorFileService, @unchecked Sendable {
+    let inner: LocalFileServiceAdapter
+    let url: URL
+    let bytes: Data
+    let hidesSize: Bool
+
+    init(inner: LocalFileServiceAdapter, url: URL, bytes: Data, hidesSize: Bool) {
+        self.inner = inner
+        self.url = url
+        self.bytes = bytes
+        self.hidesSize = hidesSize
+    }
+
+    func list(_ directory: ServicePath) async throws -> FileListing { try await inner.list(directory) }
+    func details(_ path: ServicePath) async throws -> FileEntry {
+        let entry = try await inner.details(path)
+        return FileEntry(name: entry.name, kind: entry.kind, size: hidesSize ? nil : entry.size, modified: entry.modified, isHidden: entry.isHidden)
+    }
+
+    func openForReading(_ path: ServicePath) async throws -> Int32 {
+        let descriptor = try await inner.openForReading(path)
+        do { try bytes.write(to: url); return descriptor }
+        catch { close(descriptor); throw error }
+    }
+
+    func copyContents(of path: ServicePath, to descriptor: Int32, progress: @escaping @Sendable (TransferProgress) -> Void) async throws {
+        try await inner.copyContents(of: path, to: descriptor, progress: progress)
+    }
+
+    func changes(in directory: ServicePath) async throws -> AsyncThrowingStream<Void, Error> { try await inner.changes(in: directory) }
 }

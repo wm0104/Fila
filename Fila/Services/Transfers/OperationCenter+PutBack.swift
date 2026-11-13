@@ -66,7 +66,7 @@ extension OperationCenter {
     ///
     /// `started` receives each restore in turn: the items go home one at a
     /// time, and a cross-volume one is a whole copy of the file.
-    func putBack(trashed paths: [String], started: ((UInt64) -> Void)? = nil) async throws {
+    func putBack(trashed paths: [String], started: ((LocalJobIdentifier) -> Void)? = nil) async throws {
         // One item's refusal is no reason to leave the rest in the trash: every
         // item is tried, and the first refusal is what the caller hears about.
         // A Cancel is not a refusal — it stops the items still waiting too.
@@ -98,7 +98,7 @@ extension OperationCenter {
         _ path: String,
         to original: String,
         identity: UUID? = nil,
-        started: ((UInt64) -> Void)? = nil,
+        started: ((LocalJobIdentifier) -> Void)? = nil,
     ) async throws {
         let outcome = try await awaitJob(
             JobRequest(

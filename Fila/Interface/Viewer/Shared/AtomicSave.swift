@@ -22,7 +22,8 @@ import UIKit
 /// second path and no `O_TRUNC` anywhere in the app: truncating over the
 /// original destroys a file the user may have no copy of.
 enum AtomicSave {
-    static func write(_ data: Data, to path: String, link: any LocalFileAccess) async throws {
+    @discardableResult
+    static func write(_ data: Data, to path: String, link: any LocalFileAccess) async throws -> FileIdentity {
         let directory = (path as NSString).deletingLastPathComponent
         let temporary = (directory as NSString)
             .appendingPathComponent(".fila-tmp-\(UUID().uuidString)")
@@ -33,8 +34,10 @@ enum AtomicSave {
             mode: 0o600,
             link: link,
         )
+        let written: FileIdentity
         do {
             try file.write(data)
+            written = try file.currentIdentity()
             file.close()
         } catch {
             file.close()
@@ -52,6 +55,7 @@ enum AtomicSave {
         // go through. The byte count, never a byte: a save that "did nothing"
         // and a save of an empty document look identical from the outside.
         FilaLog.info("saved \(data.count) bytes to \(path)")
+        return written
     }
 
     /// The file a save to `path` has to replace: `path` itself, or — when it
@@ -98,45 +102,38 @@ enum AtomicSave {
         link: any LocalFileAccess,
         from presenter: UIViewController,
     ) async throws -> Outcome {
-        let target = try await Self.target(of: path, link: link)
-        if let loaded, FileIdentity(target.node) != loaded {
-            let replace = await CardQuestion.ask(whenGone: false, from: presenter) { reply in
-                AlertViewController(
-                    title: String.LocalizationValue("File Changed on Disk"),
-                    message: String.LocalizationValue("This file was changed after you opened it. Saving replaces those changes with yours."),
-                ) { context in
-                    context.addAction(title: String.LocalizationValue("Cancel")) { reply(context, false) }
-                    context.addAction(title: String.LocalizationValue("Replace"), attribute: .accent) { reply(context, true) }
-                }
-            }
-            guard replace else { return .kept }
+        try await AtomicSaveOperation.run(path: path, expecting: loaded) { path in
+            let target = try await Self.target(of: path, link: link)
+            return .init(path: target.path, identity: FileIdentity(target.node))
+        } confirm: {
+            await confirmReplacement(from: presenter)
+        } publish: { path in
+            try await write(data, to: path, link: link)
         }
-        try await write(data, to: target.path, link: link)
-        // The new inode. Unknown only if the file went again at once, and
-        // then the next save has nothing it could fairly compare against.
-        let written = try? await link.details(of: target.path)
-        return .saved(written.map { FileIdentity($0.node) })
     }
 
-    enum Outcome {
-        /// Written. Carries what is on disk now, to compare on the next save.
-        case saved(FileIdentity?)
-        /// The file had changed and the person chose to keep it.
-        case kept
+    @MainActor
+    static func confirmReplacement(from presenter: UIViewController) async -> Bool {
+        await CardQuestion.ask(whenGone: false, from: presenter) { reply in
+            AlertViewController(
+                title: String.LocalizationValue("File Changed on Disk"),
+                message: String.LocalizationValue("This file was changed after you opened it. Saving replaces those changes with yours."),
+            ) { context in
+                context.addAction(title: String.LocalizationValue("Cancel")) { reply(context, false) }
+                context.addAction(title: String.LocalizationValue("Replace"), attribute: .accent) { reply(context, true) }
+            }
+        }
     }
+
+    typealias Outcome = AtomicSaveOperation.Outcome
 }
 
 /// What an editor read: enough to tell, at save time, whether the file on
 /// disk is still that one.
-struct FileIdentity: Equatable, Sendable {
-    var inode: UInt64
-    var size: Int64
-    var modified: Double
-
-    init(inode: UInt64, size: Int64, modified: Double) {
-        self.inode = inode
-        self.size = size
-        self.modified = modified
+extension FileIdentity {
+    init(_ status: stat) {
+        self.init(inode: UInt64(status.st_ino), size: Int64(status.st_size),
+                  modified: Double(status.st_mtimespec.tv_sec) + Double(status.st_mtimespec.tv_nsec) / 1_000_000_000)
     }
 
     init(_ node: FileNode) {

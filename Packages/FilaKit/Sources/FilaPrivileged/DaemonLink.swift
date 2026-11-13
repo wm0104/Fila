@@ -54,7 +54,7 @@ public final class DaemonLink: PrivilegedFileAccess, @unchecked Sendable {
     /// Forwarded to the daemon backend, which is the only one that can lose a
     /// link: the in-process backend has no connection to drop, and its jobs
     /// cannot die with one.
-    public var onLinkLost: (@Sendable () -> Void)? {
+    public var onLinkLost: (@Sendable (UInt64) -> Void)? {
         get { daemon.onLinkLost }
         set { daemon.onLinkLost = newValue }
     }
@@ -295,7 +295,7 @@ public final class DaemonLink: PrivilegedFileAccess, @unchecked Sendable {
     /// sources: [root], query: …)` — and its matches arrive on `searchResults`
     /// while its progress and completion arrive on `jobEvents` like any other
     /// job's. Stopping a search early is `cancelJob`.
-    public func startJob(_ job: JobRequest) async throws -> UInt64 {
+    public func startJob(_ job: JobRequest) async throws -> LocalJobIdentifier {
         try await service().startJob(job)
     }
 
@@ -391,7 +391,7 @@ public final class DaemonLink: PrivilegedFileAccess, @unchecked Sendable {
         return identifier.owner != nil && xpc_dictionary_get_bool(reply, FilaWireKey.terminalExited)
     }
 
-    public func cancelJob(_ identifier: UInt64) async throws {
+    public func cancelJob(_ identifier: LocalJobIdentifier) async throws {
         try await service().cancelJob(identifier)
     }
 

@@ -8,7 +8,7 @@ fail() { echo "error: $*" >&2; exit 65; }
 value() { /usr/libexec/PlistBuddy -c "Print :$2" "$1" 2>/dev/null || true; }
 [[ -x "$action/FilaSaveAction" ]] || fail 'embedded Save action executable is missing'
 [[ "$(value "$action/Info.plist" CFBundleIdentifier)" == wiki.qaq.fila.saveaction ]] || fail 'save action bundle identity is wrong'
-for key in CFBundleShortVersionString CFBundleVersion FilaAppGroupIdentifier; do
+for key in CFBundleShortVersionString CFBundleVersion FilaVersion FilaAppGroupIdentifier; do
     [[ -n "$(value "$app/Info.plist" "$key")" ]] || fail "empty app $key"
     [[ "$(value "$app/Info.plist" "$key")" == "$(value "$action/Info.plist" "$key")" ]] || fail "save action $key differs from containing app"
 done

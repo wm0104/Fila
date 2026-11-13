@@ -64,6 +64,10 @@ jobs:
         run: python3 Scripts/test-app-search.py
       - name: Test app text matching and encoding
         run: python3 Scripts/test-app-viewer.py
+      - name: Test app Debian package information
+        run: python3 Scripts/test-app-deb.py
+      - name: Test app job connection lifetimes
+        run: python3 Scripts/test-app-operations.py
 
   # The two compositions are two cold builds of the same sources into two
   # DerivedData directories — neither reuses anything of the other's — so

@@ -68,7 +68,7 @@ bundle_identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$ap
 
 # The package version comes from Configuration/Version.xcconfig, which is also
 # what the app was built with — refuse to ship a .deb that disagrees.
-app_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app_bundle/Info.plist")"
+app_version="$(/usr/libexec/PlistBuddy -c 'Print :FilaVersion' "$app_bundle/Info.plist")"
 [[ "$app_version" == "$version" ]] || {
     echo "error: app version '$app_version' does not match package version '$version'" >&2
     exit 65

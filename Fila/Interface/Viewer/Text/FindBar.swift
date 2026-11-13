@@ -10,17 +10,26 @@ final class FindBar: UIView {
     var onFind: ((String, Bool) -> Void)?
     var onTermChange: (() -> Void)?
     var onReplace: ((String, String, Bool) -> Void)?
+    var onUndo: (() -> Void)?
     var onDismiss: (() -> Void)?
 
     private let field = FindInputField()
     private let replacement = FindInputField()
     private let replacementControls = UIStackView()
     private let result = UILabel()
+    private let undo = UIButton(type: .system)
+
+    var allowsUndo = false {
+        didSet { undo.isEnabled = allowsUndo }
+    }
 
     var term: String { field.text ?? "" }
     var allowsReplacement = false {
         didSet {
-            if !allowsReplacement { replacementControls.isHidden = true }
+            for case let control as UIControl in replacementControls.arrangedSubviews {
+                control.isEnabled = allowsReplacement
+            }
+            if !allowsReplacement { replacement.resignFirstResponder() }
         }
     }
 
@@ -66,11 +75,18 @@ final class FindBar: UIView {
             $0.addTarget(self, action: #selector(dismiss), for: .touchUpInside)
         }
 
-        let controls = UIStackView(arrangedSubviews: [field, backward, forward, done]).then {
+        undo.do {
+            $0.isEnabled = false
+            $0.setTitle(String(localized: "Undo"), for: .normal)
+            $0.addTarget(self, action: #selector(undoChange), for: .touchUpInside)
+        }
+
+        let controls = UIStackView(arrangedSubviews: [field, backward, forward, undo, done]).then {
             $0.spacing = FilaUI.Spacing.compact
             $0.alignment = .center
         }
         replacement.do {
+            $0.isEnabled = false
             $0.placeholder = String(localized: "Replace With")
             $0.font = .preferredFont(forTextStyle: .body)
             $0.adjustsFontForContentSizeCategory = true
@@ -79,10 +95,12 @@ final class FindBar: UIView {
             $0.setContentHuggingPriority(UILayoutPriority(249), for: .horizontal)
         }
         let replace = UIButton(type: .system).then {
+            $0.isEnabled = false
             $0.setTitle(String(localized: "Replace"), for: .normal)
             $0.addTarget(self, action: #selector(replaceCurrent), for: .touchUpInside)
         }
         let replaceAll = UIButton(type: .system).then {
+            $0.isEnabled = false
             $0.setTitle(String(localized: "Replace All"), for: .normal)
             $0.addTarget(self, action: #selector(replaceEveryMatch), for: .touchUpInside)
         }
@@ -93,16 +111,15 @@ final class FindBar: UIView {
             $0.spacing = FilaUI.Spacing.compact
             $0.setCustomSpacing(FilaUI.Spacing.medium, after: replace)
             $0.alignment = .center
-            $0.isHidden = true
         }
-        for button in [done, replace, replaceAll] {
+        for button in [undo, done, replace, replaceAll] {
             button.do {
                 $0.titleLabel?.font = UIFontMetrics(forTextStyle: .body)
                     .scaledFont(for: .systemFont(ofSize: 17, weight: .medium))
                 $0.titleLabel?.adjustsFontForContentSizeCategory = true
             }
         }
-        for button in [replace, replaceAll] {
+        for button in [undo, replace, replaceAll] {
             button.snp.makeConstraints { make in
                 make.size.greaterThanOrEqualTo(FilaUI.minimumTapTarget)
             }
@@ -152,12 +169,9 @@ final class FindBar: UIView {
         result.isHidden = text == nil
     }
 
-    func showReplacement() {
-        guard allowsReplacement else { return }
-        isHidden = false
-        replacementControls.isHidden = false
-        if term.isEmpty { field.becomeFirstResponder() }
-        else { replacement.becomeFirstResponder() }
+    @objc private func undoChange() {
+        guard allowsUndo else { return }
+        onUndo?()
     }
 
     @objc private func replaceCurrent() {

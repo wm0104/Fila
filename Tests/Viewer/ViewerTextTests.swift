@@ -95,6 +95,40 @@ import Testing
         #expect(result.index == 2 && result.count == 2)
     }
 
+    @Test func replacingCurrentHighlightDoesNotSkipFirstMatchWhenInputFocusMoves() throws {
+        let text = "name: wm14\ndescription: wm14"
+        let first = try #require(TextSearch.find(text, term: "1", matchCase: false,
+                                                selection: NSRange(location: 0, length: 0), forwards: true))
+        #expect(TextSearch.replacementRange("1 1", term: "1", matchCase: false,
+                                             highlightedRange: NSRange(location: 0, length: 1),
+                                             selection: NSRange(location: 2, length: 1)) == NSRange(location: 0, length: 1))
+        let second = NSRange(location: 26, length: 1)
+        let range = try #require(TextSearch.replacementRange(text, term: "1", matchCase: false,
+                                                            highlightedRange: first.range, selection: second))
+        #expect(range == NSRange(location: 8, length: 1))
+        #expect(TextSearch.replacing(text, ranges: [range], with: "2", byteLimit: 100)
+            == "name: wm24\ndescription: wm14")
+        #expect(TextSearch.replacementRange(text, term: "1", matchCase: false,
+                                             highlightedRange: first.range,
+                                             selection: NSRange(location: text.utf16.count, length: 0)) == first.range)
+    }
+
+    @Test func currentReplacementRejectsStaleHighlightAndUsesUTF16MatchLengths() {
+        let first = NSRange(location: 2, length: 5)
+        let second = NSRange(location: 8, length: 4)
+        let text = "😀cafe\u{301} café"
+        #expect(TextSearch.replacementRange(text, term: "café", matchCase: false,
+                                             highlightedRange: first, selection: second) == first)
+        #expect(TextSearch.replacementRange(text, term: "café", matchCase: false,
+                                             highlightedRange: nil, selection: second) == second)
+        #expect(TextSearch.replacementRange(text, term: "café", matchCase: false,
+                                             highlightedRange: NSRange(location: 2, length: 4), selection: second) == nil)
+        #expect(TextSearch.replacementRange("Aa aa", term: "aa", matchCase: true,
+                                             highlightedRange: NSRange(location: 0, length: 2), selection: second) == nil)
+        #expect(TextSearch.replacementRange(text, term: "", matchCase: false,
+                                             highlightedRange: first, selection: second) == nil)
+    }
+
     @Test func replacementUsesOriginalRangesOnlyAndCanDelete() throws {
         let text = "cat cat"
         let ranges = try #require(TextSearch.replacementRanges(text, term: "cat", matchCase: false))
@@ -124,6 +158,29 @@ import Testing
         #expect(TextSearch.replacing("😀 cat cat", ranges: ranges, with: "catcat", byteLimit: 100) == "😀 catcat catcat")
         #expect(TextSearch.replacing("😀 cat cat", ranges: ranges, with: "", byteLimit: 6) == "😀  ")
         #expect(TextSearch.replacing("😀 cat cat", ranges: ranges, with: "large", byteLimit: 5) == nil)
+    }
+
+    @Test func dirtyComparisonKeepsCanonicallyEquivalentByteChanges() {
+        let saved = "\u{e9} x"
+        let afterUndo = "e\u{301} x"
+        #expect(saved == afterUndo)
+        #expect(!TextEncoding.exactlyEqual(saved, afterUndo))
+        #expect(TextEncoding.exactlyEqual(saved, saved))
+        #expect(!TextEncoding.exactlyEqual("a\r\nb", "a\nb"))
+    }
+
+    @Test func replacementsCannotJoinOrExpandLinesPastTheEditorBudget() throws {
+        func replace(_ text: String, _ term: String, _ value: String, lineLimit: Int) throws -> String? {
+            let ranges = try #require(TextSearch.replacementRanges(text, term: term, matchCase: true))
+            return TextSearch.replacing(text, ranges: ranges, with: value, byteLimit: 32 * 1024 * 1024, lineByteLimit: lineLimit)
+        }
+        #expect(try replace("aa\naa", "\n", "", lineLimit: 3) == nil)
+        #expect(try replace("aa\naa", "\n", "", lineLimit: 4) == "aaaa")
+        #expect(try replace("x", "x", "éé", lineLimit: 3) == nil)
+        #expect(try replace("x", "x", "éé", lineLimit: 4) == "éé")
+        #expect(try replace("xx", "x", "aa\r\n", lineLimit: 2) == "aa\r\naa\r\n")
+        #expect(try replace(String(repeating: "1234567890 ", count: 80_000), "1", String(repeating: "a", count: 400),
+                            lineLimit: 1024 * 1024) == nil)
     }
 
     @Test func budgetsUseTheOriginalEncodingBOMAndRestoredLineEndings() throws {

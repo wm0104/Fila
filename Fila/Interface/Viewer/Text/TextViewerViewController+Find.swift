@@ -88,6 +88,7 @@ extension TextViewerViewController {
     func replace(_ term: String, with replacement: String, all: Bool) {
         guard canReplaceText, !term.isEmpty else { return }
         findRefreshTask?.cancel()
+        let highlightedRange = activeFindTerm == term ? findResult?.range : nil
         activeFindTerm = term
         let selection = textView.selectedRange
         let ranges: [NSRange]
@@ -101,12 +102,8 @@ extension TextViewerViewController {
             }
             ranges = batch
         } else {
-            var current: NSRange?
-            TextSearch.enumerate(textView.text, term: term, matchCase: matchesCase) { range in
-                if range == selection { current = range }
-                return range.location < selection.location
-            }
-            guard let current else {
+            guard let current = TextSearch.replacementRange(textView.text, term: term, matchCase: matchesCase,
+                                                            highlightedRange: highlightedRange, selection: selection) else {
                 find(term, forwards: true)
                 return
             }
@@ -117,16 +114,16 @@ extension TextViewerViewController {
             return
         }
         guard let projected = validatedReplacement(ranges, with: replacement) else { return }
-        // One engine edit avoids Runestone's quadratic overlap checks for a large batch.
-        let edits: [BatchReplaceSet.Replacement] = all
-            ? [.init(range: NSRange(location: 0, length: textView.text.utf16.count), text: projected)]
-            : [.init(range: selection, text: replacement)]
-        textView.replaceText(in: BatchReplaceSet(replacements: edits))
+        if (projected as NSString) != (textView.text as NSString) {
+            if !all { textView.selectedRange = ranges[0] }
+            // setState records one native Undo without the batch setter's recursive undo-group closure.
+            apply(text: projected, addUndoAction: true)
+        }
         if all {
             refreshFindHighlights()
             findBar.showResult(String(localized: "\(ranges.count) replacements"))
         } else {
-            textView.selectedRange = NSRange(location: selection.location + replacement.utf16.count, length: 0)
+            textView.selectedRange = NSRange(location: ranges[0].location + replacement.utf16.count, length: 0)
             find(term, forwards: true)
         }
         refreshBarItems()

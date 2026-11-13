@@ -1,3 +1,4 @@
+import FilaClient
 import FilaProtocol
 import Foundation
 
@@ -44,7 +45,7 @@ extension OperationCenter {
     /// What is still holding the work, and therefore how it stops. Nil once
     /// nothing is: a finished operation, or one seeded from a breadcrumb.
     enum Control {
-        case job(UInt64)
+        case job(LocalJobIdentifier)
         case task(Task<Void, Never>)
     }
 

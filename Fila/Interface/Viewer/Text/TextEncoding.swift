@@ -34,6 +34,10 @@ struct TextEncoding: Equatable {
         return byteOrderMark.count + text.lengthOfBytes(using: encoding)
     }
 
+    static func exactlyEqual(_ lhs: String, _ rhs: String) -> Bool {
+        lhs.utf8.elementsEqual(rhs.utf8)
+    }
+
     /// Preserve CRLF even when an edit inserted a bare LF.
     static func restoringCRLF(_ text: String) -> String {
         var bytes: [UInt8] = []

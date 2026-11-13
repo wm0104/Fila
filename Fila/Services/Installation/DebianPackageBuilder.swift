@@ -61,12 +61,10 @@ enum DebianPackageBuilder {
         var architecture: Architecture
         var version: String
         var destination: String
+        var controlText: String? = nil
     }
 
-    struct Failure: LocalizedError {
-        var message: String
-        var errorDescription: String? { message }
-    }
+    typealias Failure = DebianControlFailure
 
     // MARK: - Look at a folder
 
@@ -127,11 +125,14 @@ enum DebianPackageBuilder {
         //    and the prefix on every payload path.
         progress(String(localized: "Reading the package metadata"))
         let control = try await readControlTar(layout, session: session)
-        var fields = try ControlFields(text: control.text)
-        if let declared = fields.value(of: "Architecture").flatMap(Architecture.init(field:)),
+        let current = try ControlFields(text: control.text)
+        if let declared = current.value(of: "Architecture").flatMap(Architecture.init(field:)),
            declared != request.architecture {
             throw Failure(message: String(localized: "This package is \(declared.title), which is not supported."))
         }
+        // Another window may save the working directory while this build is
+        // suspended. The output still uses the form's confirmed metadata.
+        var fields = try ControlFields(text: request.controlText ?? control.text)
         fields.set("Architecture", request.architecture.rawValue)
         if !request.version.isEmpty { fields.set("Version", request.version) }
         let rewritten = try rewrite(
@@ -149,6 +150,7 @@ enum DebianPackageBuilder {
         let destination = try await session.perform {
             try await $0.open(staging, flags: O_WRONLY | O_CREAT | O_EXCL, mode: 0o600)
         }
+        var closed = false
         do {
             progress(String(localized: "Writing the package"))
             try await writeContainer(
@@ -160,13 +162,14 @@ enum DebianPackageBuilder {
                 progress: progress,
             )
             close(destination)
+            closed = true
             _ = try await session.perform { access in
                 let outcome = try await access.setAttributes(.newItemDefaults, at: staging)
                 try await access.rename(staging, to: request.destination, exclusive: true, overrideGuard: false)
                 return outcome
             }
         } catch {
-            close(destination)
+            if !closed { close(destination) }
             _ = try? await session.perform {
                 try await $0.remove(staging, directory: false, overrideGuard: false)
             }
@@ -231,15 +234,22 @@ enum DebianPackageBuilder {
 
     /// The text of the `control` member, or nil when the archive has none.
     private static func controlText(of layout: Layout, session: FileSession) async throws -> String? {
+        try await controlSnapshot(in: layout, session: session).text
+    }
+
+    static func controlSnapshot(in layout: Layout, session: FileSession) async throws -> (text: String, identity: FileIdentity) {
         let descriptor = try await session.perform { try await $0.open(layout.control, flags: O_RDONLY) }
         defer { close(descriptor) }
+        var status = stat()
+        guard fstat(descriptor, &status) == 0 else { throw FilaFailure(errno: errno, path: layout.control) }
+        let identity = FileIdentity(status)
         let reader = try ArchiveReader(descriptor: descriptor)
         while let entry = try reader.next() {
             guard entry.name == "control", entry.kind == .regular else { continue }
             let text = try reader.data(maximumByteCount: 1 << 20)
-            return String(decoding: text, as: UTF8.self)
+            return (String(decoding: text, as: UTF8.self), identity)
         }
-        return nil
+        throw Failure(message: String(localized: "The control archive has no “control” file."))
     }
 
     private static func readControlTar(_ layout: Layout, session: FileSession) async throws -> ControlTar {
@@ -340,7 +350,8 @@ enum DebianPackageBuilder {
     /// Written to a temporary beside it and put in place with `replaceItem`,
     /// which carries the original's metadata across: a save that fails half way
     /// leaves the file the user had.
-    static func saveControl(_ text: String, in layout: Layout, session: FileSession) async throws {
+    @discardableResult
+    static func saveControl(_ text: String, in layout: Layout, session: FileSession) async throws -> FileIdentity {
         let text = try validated(text)
         let control = try await readControlTar(layout, session: session)
         let parent = (layout.control as NSString).deletingLastPathComponent
@@ -356,6 +367,9 @@ enum DebianPackageBuilder {
                 format: Self.compression(for: layout.control),
                 to: descriptor,
             )
+            var status = stat()
+            guard fstat(descriptor, &status) == 0 else { throw FilaFailure(errno: errno, path: staging) }
+            let written = FileIdentity(status)
             close(descriptor)
             closed = true
             _ = try await session.perform {
@@ -363,6 +377,7 @@ enum DebianPackageBuilder {
                 try await $0.replaceItem(at: layout.control, withTemporary: staging)
                 return outcome
             }
+            return written
         } catch {
             if !closed { close(descriptor) }
             _ = try? await session.perform {
@@ -392,36 +407,5 @@ enum DebianPackageBuilder {
         let count = read(descriptor, &bytes, bytes.count)
         guard count >= 0 else { throw FilaFailure(errno: errno, path: path) }
         return Data(bytes[0 ..< count])
-    }
-}
-
-/// The `control` file as fields, kept in the order they were read: dpkg does
-/// not care about the order, but a person editing the same file again does, and
-/// a rewritten package should be a diff of exactly what changed.
-struct ControlFields {
-    private(set) var lines: [String]
-
-    init(text: String) throws {
-        var lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        while lines.last?.isEmpty == true { lines.removeLast() }
-        guard lines.contains(where: { $0.hasPrefix("Package:") }) else {
-            throw DebianPackageBuilder.Failure(message: String(localized: "The control file has no “Package” field."))
-        }
-        self.lines = lines
-    }
-
-    var text: String { lines.joined(separator: "\n") + "\n" }
-
-    func value(of field: String) -> String? {
-        guard let line = lines.first(where: { $0.hasPrefix(field + ":") }) else { return nil }
-        return line.dropFirst(field.count + 1).trimmingCharacters(in: .whitespaces)
-    }
-
-    mutating func set(_ field: String, _ value: String) {
-        if let index = lines.firstIndex(where: { $0.hasPrefix(field + ":") }) {
-            lines[index] = "\(field): \(value)"
-        } else {
-            lines.append("\(field): \(value)")
-        }
     }
 }

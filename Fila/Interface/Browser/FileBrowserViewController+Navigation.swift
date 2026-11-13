@@ -91,9 +91,12 @@ extension FileBrowserViewController {
         // The rows as shown, so a swipe in the image viewer follows the sort.
         let rows = visible
         let directory = directory
+        let path = path(of: node)
+        let navigation = navigationController
         Task {
             let gallery = await ImageGallery.collect(rows, in: directory, around: node.name)
-            await openFile(at: path(of: node), session: session, gallery: gallery)
+            guard !Task.isCancelled, let navigation, navigation.topViewController === self else { return }
+            await openFile(at: path, session: session, gallery: gallery)
         }
     }
 }

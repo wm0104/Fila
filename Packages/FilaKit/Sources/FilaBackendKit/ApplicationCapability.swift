@@ -63,6 +63,14 @@ public enum InstallOutcome: Sendable, Equatable {
     }
 }
 
+/// LaunchServices accepting a document is a handoff, not an installation.
+public enum TrollStoreHandoffOutcome: Sendable, Equatable {
+    case opened
+    case unavailable
+    case failed(domain: String, code: Int)
+    case unanswered
+}
+
 /// The installed-applications capability, provided by the applications
 /// module and absent from a build that does not bundle it. Everything the
 /// shell needs about apps comes through here: whether the feature is on,
@@ -86,4 +94,6 @@ public protocol ApplicationCapability: AnyObject {
     func manifest(ofPackageAt url: URL) async throws -> PackageManifest
     /// Hands a staged `.ipa` to the system installer.
     func install(packageAt url: URL) async -> InstallOutcome
+    /// The URL must name a delivered copy owned by the receiving app.
+    func openInTrollStore(packageAt url: URL) async -> TrollStoreHandoffOutcome
 }

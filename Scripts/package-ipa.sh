@@ -63,7 +63,7 @@ bundle_identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$ap
 
 # Same rule as the .deb: the archive version comes from Version.xcconfig, which
 # is also what the app was built with — refuse to ship a disagreement.
-app_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app_bundle/Info.plist")"
+app_version="$(/usr/libexec/PlistBuddy -c 'Print :FilaVersion' "$app_bundle/Info.plist")"
 [[ "$app_version" == "$version" ]] || {
     echo "error: app version '$app_version' does not match archive version '$version'" >&2
     exit 65

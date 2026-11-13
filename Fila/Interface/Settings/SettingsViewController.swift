@@ -330,7 +330,7 @@ final class SettingsViewController: UIViewController {
 
     private static func version(of bundle: Bundle?) -> String {
         guard let info = bundle?.infoDictionary else { return "—" }
-        let short = info["CFBundleShortVersionString"] as? String ?? "—"
+        let short = info["FilaVersion"] as? String ?? info["CFBundleShortVersionString"] as? String ?? "—"
         let build = info["CFBundleVersion"] as? String ?? "—"
         return "\(short) (\(build))"
     }

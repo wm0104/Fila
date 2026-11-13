@@ -37,13 +37,17 @@ extension UIViewController {
     ///
     /// A gallery lets an image viewer page through the folder's other images.
     func openFile(at path: String, session: FileSession, gallery: ImageGallery? = nil) async {
+        let navigation = navigationController ?? shell?.content.navigation
+        let source = navigation?.topViewController
         do {
             let details = try await session.perform(retryOnDisconnect: true) { try await $0.details(of: path) }
+            guard !Task.isCancelled, let navigation, navigation.topViewController === source else { return }
             if details.node.isNavigable {
                 session.noteVisit(directory: path)
             }
             await openFile(details, session: session, gallery: gallery)
         } catch let failure as FilaFailure {
+            guard !Task.isCancelled, let navigation, navigation.topViewController === source else { return }
             // Over whatever is up: a `fila://view` link arrives at the root,
             // which UIKit refuses to present from while a sheet is showing.
             TopPresenter.whenReady(from: self) { $0.report(failure) }

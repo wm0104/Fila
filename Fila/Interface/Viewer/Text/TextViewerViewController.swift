@@ -142,6 +142,7 @@ final class TextViewerViewController: TabContentViewController {
             $0.onFind = { [weak self] term, forwards in self?.find(term, forwards: forwards) }
             $0.onTermChange = { [weak self] in self?.clearFindResult() }
             $0.onReplace = { [weak self] term, replacement, all in self?.replace(term, with: replacement, all: all) }
+            $0.onUndo = { [weak self] in self?.undoTextChange() }
             $0.onDismiss = { [weak self] in self?.toggleFind() }
         }
 
@@ -289,14 +290,15 @@ final class TextViewerViewController: TabContentViewController {
     /// Parses the text and hands it to the view in one go, which is what
     /// `TextViewState` exists for: setting text, theme and language separately
     /// re-parses the whole document once per property.
-    private func apply(text: String) {
+    func apply(text: String, addUndoAction: Bool = false) {
         let theme = ScaledEditorTheme.theme(for: traitCollection)
         if let language = language(for: text) {
-            textView.setState(TextViewState(text: text, theme: theme, language: language))
+            textView.setState(TextViewState(text: text, theme: theme, language: language), addUndoAction: addUndoAction)
         } else {
-            textView.setState(TextViewState(text: text, theme: theme))
+            textView.setState(TextViewState(text: text, theme: theme), addUndoAction: addUndoAction)
         }
         textView.backgroundColor = theme.backgroundColor
+        if addUndoAction { hasUnsavedChanges = true }
         refreshFindHighlights()
     }
 
@@ -354,6 +356,7 @@ final class TextViewerViewController: TabContentViewController {
         navigationItem.title = name
         cancelItem.isEnabled = !isSaving
         findBar.allowsReplacement = canReplaceText
+        findBar.allowsUndo = canReplaceText && textView.undoManager?.canUndo == true
 
         navigationItem.hidesBackButton = isEditingFile
         navigationItem.leftBarButtonItem = isEditingFile ? cancelItem : nil
@@ -387,10 +390,6 @@ final class TextViewerViewController: TabContentViewController {
             title: String(localized: "Find"),
             image: UIImage(systemName: "magnifyingglass"),
         ) { [weak self] _ in self?.toggleFind() }
-        let replace = UIAction(
-            title: String(localized: "Replace"),
-            attributes: canReplaceText ? [] : .disabled,
-        ) { [weak self] _ in self?.findBar.showReplacement() }
         let matchCase = UIAction(
             title: String(localized: "Match Case"),
             state: matchesCase ? .on : .off,
@@ -400,11 +399,6 @@ final class TextViewerViewController: TabContentViewController {
             refreshFindHighlights()
             refreshBarItems()
         }
-        let undo = UIAction(
-            title: String(localized: "Undo"),
-            image: UIImage(systemName: "arrow.uturn.backward"),
-            attributes: canReplaceText && textView.undoManager?.canUndo == true ? [] : .disabled,
-        ) { [weak self] _ in self?.undoTextChange() }
         let wrap = UIAction(
             title: String(localized: "Wrap Lines"),
             // `text.word.spacing` is an iOS 16 symbol and draws nothing on 15.
@@ -457,14 +451,14 @@ final class TextViewerViewController: TabContentViewController {
                 ),
             ],
         )
-        return [find, replace, matchCase, undo, wrap, highlight]
+             return [find, matchCase, wrap, highlight]
     }
 
     private func undoTextChange() {
-        guard canReplaceText else { return }
-        textView.undoManager?.undo()
+        guard canReplaceText, let undoManager = textView.undoManager, undoManager.canUndo else { return }
+        undoManager.undo()
         let text = usesCRLF ? TextEncoding.restoringCRLF(textView.text) : textView.text
-        hasUnsavedChanges = text != savedText
+        hasUnsavedChanges = !TextEncoding.exactlyEqual(text, savedText)
         refreshFindHighlights()
         refreshBarItems()
     }
@@ -472,7 +466,8 @@ final class TextViewerViewController: TabContentViewController {
     func validatedReplacement(_ ranges: [NSRange], with replacement: String) -> String? {
         let limit = Int(ViewerLimits.editableTextByteCount)
         // Bound the engine's UTF-8 allocation separately from the original on-disk encoding.
-        guard let text = TextSearch.replacing(textView.text, ranges: ranges, with: replacement, byteLimit: limit * 4) else {
+        guard let text = TextSearch.replacing(textView.text, ranges: ranges, with: replacement, byteLimit: limit * 4,
+                                            lineByteLimit: ViewerLimits.textLineByteCount) else {
             replacementTooLarge()
             return nil
         }

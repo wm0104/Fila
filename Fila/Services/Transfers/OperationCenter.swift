@@ -1,3 +1,4 @@
+import Combine
 import FilaClient
 import FilaLog
 import FilaProtocol
@@ -40,12 +41,13 @@ final class OperationCenter: ObservableObject {
 
     /// Completions that arrived before their row existed, with their skipped
     /// members. See `startJob`.
-    private var earlyCompletions: [UInt64: (outcome: FilaFailure, skipped: Int64)] = [:]
+    private var earlyCompletions: [LocalJobIdentifier: (outcome: FilaFailure, skipped: Int64)] = [:]
     /// `startJob` calls waiting on the daemon's reply. A completion is held
     /// only while one is: with none outstanding nothing will ever claim it,
     /// and an identifier the restarted daemon hands out again would.
     private var startsInFlight = 0
     private var queuedStarts = 0
+    private var latestLostGeneration: UInt64 = 0
 
     /// Includes jobs waiting for their daemon identifier, not just visible rows.
     var hasActiveWork: Bool {
@@ -64,8 +66,8 @@ final class OperationCenter: ObservableObject {
                 self?.apply(update)
             }
         }
-        session.link.onLinkLost = { [weak self] in
-            Task { @MainActor in self?.abandonDaemonJobs() }
+        session.link.onLinkLost = { [weak self] generation in
+            Task { @MainActor in self?.abandonDaemonJobs(generation: generation) }
         }
     }
 
@@ -79,14 +81,15 @@ final class OperationCenter: ObservableObject {
     ///
     /// Ids are collected first because `finish` moves rows around underneath
     /// the iteration.
-    private func abandonDaemonJobs() {
+    func abandonDaemonJobs(generation: UInt64) {
+        latestLostGeneration = max(latestLostGeneration, generation)
         let lost = operations.filter { operation in
-            guard operation.isRunning, case .job = operation.control else { return false }
-            return true
+            guard operation.isRunning, case let .job(identifier) = operation.control else { return false }
+            return isLost(identifier)
         }.map(\.id)
         // `filad` counts identifiers from 1 again on its next run; a held
         // completion from this connection would finish that run's job.
-        earlyCompletions.removeAll()
+        earlyCompletions = earlyCompletions.filter { !isLost($0.key) }
         guard !lost.isEmpty else { return }
         // Not an error the user caused, and the only explanation for rows that
         // are about to end at 40%: the connection went and took the jobs with it.
@@ -94,6 +97,10 @@ final class OperationCenter: ObservableObject {
         for identity in lost {
             finish(identity, FilaFailure(code: .operationFailed, systemError: ECONNRESET))
         }
+    }
+
+    private func isLost(_ identifier: LocalJobIdentifier) -> Bool {
+        identifier.generation > 0 && identifier.generation <= latestLostGeneration
     }
 
     // MARK: - Daemon jobs
@@ -118,7 +125,7 @@ final class OperationCenter: ObservableObject {
     func trash(
         _ paths: [String],
         feedback: Feedback = .automatic,
-        started: ((UInt64) -> Void)? = nil,
+        started: ((LocalJobIdentifier) -> Void)? = nil,
     ) async throws -> FilaFailure {
         let identity = UUID()
         var recorded: [String] = []
@@ -164,7 +171,7 @@ final class OperationCenter: ObservableObject {
         undo: Undo? = nil,
         feedback: Feedback = .automatic,
         whenFinished: ((FilaFailure) -> Void)? = nil,
-    ) async throws -> UInt64 {
+    ) async throws -> LocalJobIdentifier {
         var directories = request.sources.map { ($0 as NSString).deletingLastPathComponent }
         if let destination = request.destination {
             // The destination gains entries; its parent gains the destination.
@@ -191,14 +198,7 @@ final class OperationCenter: ObservableObject {
         // the connection; say so, rather than letting this job's progress land
         // on the wrong row and this job's cancel button stop it.
         if let stale = index(ofJob: identifier) {
-            operations[stale].state = .interrupted
-            operations[stale].control = nil
-            operations[stale].undo = nil
-            // Anything awaiting that row is told here, because nothing else
-            // ever will be: the connection that would have carried its
-            // `.completed` is the one that went away.
-            operations[stale].whenFinished?(FilaFailure(code: .operationFailed, systemError: ECONNRESET))
-            operations[stale].whenFinished = nil
+            finish(operations[stale].id, FilaFailure(code: .operationFailed, systemError: ECONNRESET))
         }
         let operation = Operation(
             kind: kind,
@@ -217,7 +217,9 @@ final class OperationCenter: ObservableObject {
         // already reported itself by now. `jobEvents` is drained by a different
         // task from the one awaiting the reply, so the order is not ours to
         // choose; the completion is held until there is a row to put it on.
-        if let early = earlyCompletions.removeValue(forKey: identifier) {
+        if isLost(identifier) {
+            finish(operation.id, FilaFailure(code: .operationFailed, systemError: ECONNRESET))
+        } else if let early = earlyCompletions.removeValue(forKey: identifier) {
             finish(operation.id, early.outcome, skipped: early.skipped)
         }
         return identifier
@@ -246,7 +248,7 @@ final class OperationCenter: ObservableObject {
         subtitle: String,
         undo: Undo? = nil,
         feedback: Feedback = .automatic,
-        started: ((UInt64) -> Void)? = nil,
+        started: ((LocalJobIdentifier) -> Void)? = nil,
     ) async throws -> FilaFailure {
         try await withCheckedThrowingContinuation { continuation in
             Task { @MainActor in
@@ -430,7 +432,8 @@ final class OperationCenter: ObservableObject {
 
     // MARK: - Events
 
-    private func apply(_ update: JobUpdate) {
+    func apply(_ update: JobUpdate) {
+        guard !isLost(update.identifier) else { return }
         guard let index = index(ofJob: update.identifier) else {
             // The row is not here yet — see `startJob`. Progress lost in that
             // gap costs nothing; a completion costs the row running forever.
@@ -450,11 +453,11 @@ final class OperationCenter: ObservableObject {
 
     /// The row a daemon job is running on, for a screen that wants to watch
     /// exactly the operation it just started.
-    func operation(forJob identifier: UInt64) -> Operation? {
+    func operation(forJob identifier: LocalJobIdentifier) -> Operation? {
         index(ofJob: identifier).map { operations[$0] }
     }
 
-    private func index(ofJob identifier: UInt64) -> Int? {
+    private func index(ofJob identifier: LocalJobIdentifier) -> Int? {
         operations.firstIndex {
             if case let .job(existing)? = $0.control {
                 return existing == identifier
@@ -463,7 +466,7 @@ final class OperationCenter: ObservableObject {
         }
     }
 
-    private func holdEarly(_ identifier: UInt64, _ failure: FilaFailure, skipped: Int64) {
+    private func holdEarly(_ identifier: LocalJobIdentifier, _ failure: FilaFailure, skipped: Int64) {
         // A late completion for a row the lost link already ended, with no
         // start waiting to claim it, belongs to nothing.
         guard startsInFlight > 0 else { return }

@@ -29,7 +29,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         BackendScreens.shell = AppBackendShell()
         let info = Bundle.main.infoDictionary
         FilaLog.info(
-            "Fila \(info?["CFBundleShortVersionString"] as? String ?? "?")"
+            "Fila \(info?["FilaVersion"] as? String ?? info?["CFBundleShortVersionString"] as? String ?? "?")"
                 + " (\(info?["CFBundleVersion"] as? String ?? "?"))"
                 + " on \(ProcessInfo.processInfo.operatingSystemVersionString)",
         )
@@ -37,6 +37,12 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
             do { try await FileSession.shared.prepareTemporaryFiles() }
             catch { FilaLog.error("Temporary workspace preparation failed: \(error)") }
         }
+        // App notifications aggregate all scenes; one background window must
+        // not pause observation for another window that is still foreground.
+        NotificationCenter.default.addObserver(self, selector: #selector(didEnterBackground),
+                                               name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(willEnterForeground),
+                                               name: UIApplication.willEnterForegroundNotification, object: nil)
         return true
     }
 
@@ -67,13 +73,13 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
 
     /// No directory polling while nothing is on screen; coming back hints
     /// every open browser once, because anything may have happened.
-    func applicationDidEnterBackground(_: UIApplication) {
+    @objc private func didEnterBackground() {
         for backend in BackendComposition.fileBackends {
             backend.setObservationPaused(true)
         }
     }
 
-    func applicationWillEnterForeground(_: UIApplication) {
+    @objc private func willEnterForeground() {
         for backend in BackendComposition.fileBackends {
             backend.setObservationPaused(false)
         }

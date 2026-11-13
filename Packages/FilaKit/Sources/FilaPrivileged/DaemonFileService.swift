@@ -16,7 +16,7 @@ import XPC
 /// The class is a reference type because it owns a connection; it is safe from
 /// any thread because everything it mutates is behind `stateLock`.
 final class DaemonFileService: LocalFileAccess, @unchecked Sendable {
-    private let queue = DispatchQueue(label: "wiki.qaq.fila.client", qos: .userInitiated)
+    private let queue: DispatchQueue
     private let stateLock = NSLock()
     private var connection: xpc_connection_t?
     /// Counts the links built, so a reply can name the one it was sent on
@@ -41,10 +41,11 @@ final class DaemonFileService: LocalFileAccess, @unchecked Sendable {
     /// Called when the connection goes away. Set once, before the first
     /// request; it fires on the connection's own queue and may fire more than
     /// once for a single disconnection, so whatever it does must be idempotent.
-    var onLinkLost: (@Sendable () -> Void)?
+    var onLinkLost: (@Sendable (UInt64) -> Void)?
 
-    init(streams: FileEventStreams) {
+    init(streams: FileEventStreams, queue: DispatchQueue = DispatchQueue(label: "wiki.qaq.fila.client", qos: .userInitiated)) {
         self.streams = streams
+        self.queue = queue
     }
 
     // MARK: - Requests
@@ -193,16 +194,18 @@ final class DaemonFileService: LocalFileAccess, @unchecked Sendable {
         return Data(bytes: bytes, count: length)
     }
 
-    func startJob(_ job: JobRequest) async throws -> UInt64 {
-        let reply = try await send(.startJob) { request in
+    func startJob(_ job: JobRequest) async throws -> LocalJobIdentifier {
+        let active = try activeConnection()
+        let reply = try await send(.startJob, using: active) { request in
             job.encode(into: request)
         }
-        return xpc_dictionary_get_uint64(reply, FilaWireKey.jobIdentifier)
+        return LocalJobIdentifier(value: xpc_dictionary_get_uint64(reply, FilaWireKey.jobIdentifier), generation: active.generation)
     }
 
-    func cancelJob(_ identifier: UInt64) async throws {
-        _ = try await send(.cancelJob) { request in
-            xpc_dictionary_set_uint64(request, FilaWireKey.jobIdentifier, identifier)
+    func cancelJob(_ identifier: LocalJobIdentifier) async throws {
+        let active = try connection(for: identifier.generation)
+        _ = try await send(.cancelJob, using: active) { request in
+            xpc_dictionary_set_uint64(request, FilaWireKey.jobIdentifier, identifier.value)
         }
     }
 
@@ -246,11 +249,9 @@ final class DaemonFileService: LocalFileAccess, @unchecked Sendable {
     /// another request had just built.
     func invalidate() {
         stateLock.lock()
-        let existing = connection
-        connection = nil
+        let generation = connectionGeneration
         stateLock.unlock()
-        guard let existing else { return }
-        xpc_connection_cancel(existing)
+        invalidate(generation: generation)
     }
 
     /// Drop the link `generation` names, and only that one.
@@ -262,35 +263,27 @@ final class DaemonFileService: LocalFileAccess, @unchecked Sendable {
     /// the daemon cancels every job a peer started when its connection goes,
     /// so a paste started on the new link would stop part-way.
     ///
-    /// The link this retires is reported lost here, while nothing has
-    /// replaced it yet: the reply proves it dead, so its jobs died with it,
-    /// and the event its own cancellation produces may arrive after a
-    /// replacement exists, when `isNewest` no longer lets it be reported.
+    /// Retire once under the lock, then report that connection's generation.
+    /// Its delayed cancellation event cannot retire a replacement.
     func invalidate(generation stale: UInt64) {
         stateLock.lock()
         let existing = connectionGeneration == stale ? connection : nil
+        if existing != nil { connection = nil }
         stateLock.unlock()
         guard let existing else { return }
-        // Reported before the link is cleared: no replacement can be built
-        // until the loss is on its way.
-        onLinkLost?()
-        stateLock.lock()
-        let retires = connectionGeneration == stale && connection === existing
-        if retires {
-            connection = nil
-        }
-        stateLock.unlock()
-        guard retires else { return }
+        // Carries its own generation even if a replacement has already been
+        // built by the time the main actor handles the notification.
+        onLinkLost?(stale)
         xpc_connection_cancel(existing)
     }
 
-    /// Whether `generation` is the newest link built. Only that link's end
-    /// is news: an older one was retired by `invalidate`, which reported it
-    /// then, and its late events must not end jobs running on its successor.
-    func isNewest(_ generation: UInt64) -> Bool {
+    private func connection(for generation: UInt64) throws -> (connection: xpc_connection_t, generation: UInt64) {
         stateLock.lock()
         defer { stateLock.unlock() }
-        return connectionGeneration == generation
+        guard generation == connectionGeneration, let connection else {
+            throw FilaFailure(code: .operationFailed, systemError: ECONNRESET)
+        }
+        return (connection, generation)
     }
 
     // MARK: - Transport
@@ -303,6 +296,7 @@ final class DaemonFileService: LocalFileAccess, @unchecked Sendable {
     /// refuse.
     func send(
         _ operation: FilaOperation,
+        using selected: (connection: xpc_connection_t, generation: UInt64)? = nil,
         fill: (xpc_object_t) -> Void,
     ) async throws -> xpc_object_t {
         let request = xpc_dictionary_create(nil, nil, 0)
@@ -319,7 +313,7 @@ final class DaemonFileService: LocalFileAccess, @unchecked Sendable {
             FilaLog.verbose("→ \(operation.name) \(FilaLog.requestPath(request))")
         }
 
-        let (connection, generation) = try activeConnection()
+        let (connection, generation) = try selected ?? activeConnection()
         let reply: xpc_object_t = try await withCheckedThrowingContinuation { continuation in
             xpc_connection_send_message_with_reply(connection, request, queue) { reply in
                 if xpc_get_type(reply) == FilaXPC.typeDictionary {
@@ -371,9 +365,9 @@ final class DaemonFileService: LocalFileAccess, @unchecked Sendable {
         xpc_connection_set_event_handler(created) { [weak self] message in
             guard let self else { return }
             if let update = JobEvent.decode(message) {
-                streams.yield(JobUpdate(identifier: update.jobIdentifier, event: update.event))
+                streams.yield(JobUpdate(identifier: .init(value: update.jobIdentifier, generation: generation), event: update.event))
             } else if let result = SearchBatch.decode(message) {
-                streams.yield(SearchUpdate(identifier: result.jobIdentifier, batch: result.batch))
+                streams.yield(SearchUpdate(identifier: .init(value: result.jobIdentifier, generation: generation), batch: result.batch))
             } else if message === FilaXPC.errorConnectionInterrupted
                 || message === FilaXPC.errorConnectionInvalid
             {
@@ -383,12 +377,9 @@ final class DaemonFileService: LocalFileAccess, @unchecked Sendable {
                 // arrive on `events` to say so. Without telling somebody, a
                 // copy that died with the connection sits on screen at 40%
                 // forever and anything awaiting it waits forever with it.
-                // Only the newest link's, though: a retired one was reported
-                // when it was retired, and its own invalid event may arrive
-                // after the replacement has jobs of its own.
-                if isNewest(generation) {
-                    onLinkLost?()
-                }
+                // Retires only this generation, even if the event arrives
+                // after a replacement already has jobs of its own.
+                invalidate(generation: generation)
             }
         }
         xpc_connection_activate(created)

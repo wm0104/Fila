@@ -242,7 +242,7 @@ private final class RecordingAccess: LocalFileAccess, @unchecked Sendable {
         inner.searchResults
     }
 
-    var onLinkLost: (@Sendable () -> Void)? {
+    var onLinkLost: (@Sendable (UInt64) -> Void)? {
         get { inner.onLinkLost }
         set { inner.onLinkLost = newValue }
     }
@@ -304,11 +304,11 @@ private final class RecordingAccess: LocalFileAccess, @unchecked Sendable {
         try await inner.extendedAttribute(name, at: path)
     }
 
-    func startJob(_ job: JobRequest) async throws -> UInt64 {
+    func startJob(_ job: JobRequest) async throws -> LocalJobIdentifier {
         try await inner.startJob(job)
     }
 
-    func cancelJob(_ identifier: UInt64) async throws {
+    func cancelJob(_ identifier: LocalJobIdentifier) async throws {
         try await inner.cancelJob(identifier)
     }
 

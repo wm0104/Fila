@@ -6,4 +6,6 @@
 // rejects that, keep it that way.
 
 MARKETING_VERSION = 0.8.4
+// Debian revision and in-app display suffix; the Apple bundle stays numeric.
+FILA_VERSION_SUFFIX = -1
 CURRENT_PROJECT_VERSION = 268

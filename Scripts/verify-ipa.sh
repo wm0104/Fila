@@ -52,7 +52,8 @@ info="$app/Info.plist"
 plist_value() { /usr/libexec/PlistBuddy -c "Print :$1" "$info" 2>/dev/null || true; }
 
 expect "CFBundleIdentifier" "$(plist_value CFBundleIdentifier)" "wiki.qaq.fila"
-expect "CFBundleShortVersionString" "$(plist_value CFBundleShortVersionString)" "$version"
+expect "CFBundleShortVersionString" "$(plist_value CFBundleShortVersionString)" "${version%%-*}"
+expect "FilaVersion" "$(plist_value FilaVersion)" "$version"
 
 # The icon is two halves and shipping one of them shows a blank tile: actool
 # writes the artwork into Assets.car, and CFBundleIconName is what points

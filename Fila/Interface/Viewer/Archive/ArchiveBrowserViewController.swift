@@ -511,7 +511,8 @@ extension ArchiveBrowserViewController: UICollectionViewDelegate {
     /// A `.deb` is an `ar` holding a compressed tar, and the thing anyone wants
     /// out of one is a layer down. The child owns the staged directory.
     private func descend(into row: Row) {
-        stage(row) { [self] staged in
+        stage(row) { [weak self] staged in
+            guard let self else { return }
             pushDetail(ArchiveBrowserViewController(
                 title: row.entry.name,
                 archivePath: staged.path,
@@ -530,7 +531,8 @@ extension ArchiveBrowserViewController: UICollectionViewDelegate {
     /// The member in the app's own viewer, the way a snapshot of a remote file
     /// is shown; the viewer's going removes the staged directory.
     private func preview(_ row: Row) {
-        stage(row) { [self] staged in
+        stage(row) { [weak self] staged in
+            guard let self else { return }
             let directory = staged.deletingLastPathComponent()
             guard let shell = BackendScreens.shell else {
                 try? FileManager.default.removeItem(at: directory)

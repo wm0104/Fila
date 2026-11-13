@@ -172,6 +172,10 @@ public final class ApplicationBackend: Backend, ApplicationCapability {
         }
     }
 
+    public func openInTrollStore(packageAt url: URL) async -> TrollStoreHandoffOutcome {
+        await ApplicationCatalog.openInTrollStore(packageAt: url)
+    }
+
     // MARK: - Changes
 
     /// Hints that the catalogue may have changed: the app came back to the

@@ -517,17 +517,16 @@ public final class FileJob: @unchecked Sendable {
             UInt32(REMOVEFILE_STATE_CONFIRM_CONTEXT),
             Unmanaged.passUnretained(tally).toOpaque(),
         )
-        // removefile(3) takes a path, and the descriptor form is not part of
-        // what the iOS 15 floor promises. So the parent is proven symlink-free
-        // first: an ancestor swapped for a link since the guard decided fails
-        // here with ELOOP instead of taking a protected node with it. What
-        // remains is the gap between this open and removefile's own lookup.
-        try filaWithDirectory(FilaPath.directory(of: source)) { _ in }
-        // REMOVEFILE_RECURSIVE alone: removefile never follows a symlink, so a
-        // link is unlinked and whatever it pointed at is left alone.
-        try filaCheck(source) { removefile(source, state, removefile_flags_t(REMOVEFILE_RECURSIVE)) }
-        if isCancelled {
-            throw FilaFailure(code: .cancelled, path: source)
+        try DeletionQuarantine.remove(source, operations: operations, isCancelled: { self.isCancelled }) { staged in
+            tally.removalPath = (staged, source)
+            defer { tally.removalPath = nil }
+            let result = removefile(staged, state, removefile_flags_t(REMOVEFILE_RECURSIVE))
+            let code = Darwin.errno
+            if result != 0 {
+                if code == ECANCELED, isCancelled { throw FilaFailure(code: .cancelled, path: source) }
+                throw FilaFailure(errno: code, path: source)
+            }
+            if isCancelled { throw FilaFailure(code: .cancelled, path: source) }
         }
     }
 

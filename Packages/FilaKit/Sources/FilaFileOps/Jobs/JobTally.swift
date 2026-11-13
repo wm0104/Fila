@@ -29,6 +29,9 @@ final class JobTally {
     /// a folder for free, as the whole-folder clone always let it.
     var clonesInPlace = false
 
+    /// A delete's private location is not the path the user selected.
+    var removalPath: (staged: String, original: String)?
+
     private let report: (JobProgress) -> Void
 
     private var completedBytes: Int64 = 0
@@ -262,7 +265,9 @@ let filaRemoveProgress: removefile_callback_t = { _, path, context in
     if tally.job.isCancelled {
         return Int32(REMOVEFILE_STOP)
     }
-    tally.beginItem(path.map { String(cString: $0) } ?? "")
+    let actual = path.map { String(cString: $0) } ?? ""
+    let displayed = tally.removalPath.map { filaReplacingPrefix($0.staged, with: $0.original, in: actual) } ?? actual
+    tally.beginItem(displayed)
     tally.finishedItem()
     return Int32(REMOVEFILE_PROCEED)
 }
