@@ -1,4 +1,8 @@
+#if canImport(CoreGraphics)
+import CoreGraphics
+#else
 import Foundation
+#endif
 
 /// Frames are in the host's coordinates, excluding the focused stack's bars.
 struct PaneLayout {
