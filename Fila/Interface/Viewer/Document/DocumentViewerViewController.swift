@@ -17,11 +17,9 @@ import WebKit
 /// `QLPreviewController` cannot do that on any path: it renders in a system
 /// extension that opens the URL itself, as `mobile`.
 ///
-/// The page is a converted document, not the web. Nothing is stored, a
-/// content rule list blocks every load outside the document's own schemes,
-/// and a tapped link leaves for the system instead of navigating here. Page
-/// JavaScript stays on, because a workbook switches sheets with the
-/// converter's own script.
+/// Converted documents stay offline; the converter needs its own scripts for
+/// workbook tabs. HTML uses the same single descriptor but starts scriptless
+/// and offline. Its optional scripts and HTTPS never apply to another viewer.
 ///
 /// When WebKit declines the type or fails to draw it, the screen says so —
 /// see `documentViewerFailed`. It does not open the file as its bytes: a
@@ -29,9 +27,13 @@ import WebKit
 /// mistaking their document for an archive.
 final class DocumentViewerViewController: TabContentViewController, WKNavigationDelegate {
     private let handler: DocumentSchemeHandler?
+    private let policy: DocumentPreviewPolicy
+    private let file: DescriptorFile
     private lazy var webView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration().then {
         // Nothing a document does outlives the screen.
         $0.websiteDataStore = .nonPersistent()
+        $0.defaultWebpagePreferences.allowsContentJavaScript = policy.allowsScripts
+        $0.preferences.javaScriptCanOpenWindowsAutomatically = false
         $0.mediaTypesRequiringUserActionForPlayback = .all
         if let handler {
             $0.setURLSchemeHandler(handler, forURLScheme: DocumentSchemeHandler.scheme)
@@ -58,10 +60,13 @@ final class DocumentViewerViewController: TabContentViewController, WKNavigation
         case abandoned
     }
 
-    init(details: FileDetails, file: DescriptorFile) {
+    init(details: FileDetails, file: DescriptorFile, policy: DocumentPreviewPolicy = .office) {
+        self.policy = policy
+        self.file = file
         let name = (details.path as NSString).lastPathComponent
-        handler = FileFormat.documentMIMEType(name: name).map {
-            DocumentSchemeHandler(file: file, name: name, mimeType: $0)
+        let mime = policy == .office ? FileFormat.documentMIMEType(name: name) : "text/html"
+        handler = mime.map {
+            DocumentSchemeHandler(file: file, name: name, mimeType: $0, contentSecurityPolicy: policy.contentSecurityPolicy)
         }
         super.init(nibName: nil, bundle: nil)
         title = name
@@ -90,7 +95,17 @@ final class DocumentViewerViewController: TabContentViewController, WKNavigation
             abandon("no document type for its name")
             return
         }
-        DocumentContentRules.load { [weak self] rules in
+        if policy != .office {
+            let action = UIAction(title: String(localized: "Allow Scripts and HTTPS for This Preview"),
+                                  state: policy == .interactiveHTML ? .on : .off) { [weak self] _ in
+                guard let self else { return }
+                (parent as? ViewerContainerViewController)?.setHTMLPolicy(
+                    policy == .offlineHTML ? .interactiveHTML : .offlineHTML, file: file, from: self,
+                )
+            }
+            (parent as? ViewerContainerViewController)?.childMenuElements = [action]
+        }
+        DocumentContentRules.load(policy) { [weak self] rules in
             guard let self, state == .loading else { return }
             // Fail closed: without the rules the page could reach the network.
             guard let rules else {
@@ -99,6 +114,14 @@ final class DocumentViewerViewController: TabContentViewController, WKNavigation
             }
             webView.configuration.userContentController.add(rules)
             documentNavigation = webView.load(URLRequest(url: handler.url))
+        }
+    }
+
+    override func willMove(toParent parent: UIViewController?) {
+        super.willMove(toParent: parent)
+        if parent == nil, isViewLoaded {
+            state = .abandoned
+            webView.stopLoading()
         }
     }
 
@@ -126,6 +149,11 @@ final class DocumentViewerViewController: TabContentViewController, WKNavigation
     ) {
         guard let handler, let url = action.request.url else {
             decisionHandler(.cancel)
+            return
+        }
+        if policy != .office {
+            // HTTPS opt-in is for subresources, never another page or app.
+            decisionHandler(action.targetFrame?.isMainFrame == true && handler.isDocument(url) ? .allow : .cancel)
             return
         }
         if handler.isDocument(url) {
@@ -200,60 +228,23 @@ final class DocumentViewerViewController: TabContentViewController, WKNavigation
     }
 }
 
-/// The network, off: every load is blocked, then the schemes a converted
-/// document uses are let back in. Compiled once per launch and shared.
-///
-/// A content rule list is the only switch WebKit gives for subresources — an
-/// image, a stylesheet, a `fetch` — which a navigation policy never sees.
-/// The probe that chose this showed an `https` image loading without it and
-/// blocked with it, while a workbook's sheet tabs kept working.
+/// Keep the converter's and both HTML policies separate, including concurrent
+/// opens in different tabs. A failed compile never starts an unfiltered load.
+@MainActor
 private enum DocumentContentRules {
-    private static var compiled: WKContentRuleList?
-    private static var waiting: [(WKContentRuleList?) -> Void]?
+    private static var compiled: [DocumentPreviewPolicy: WKContentRuleList] = [:]
+    private static var waiting: [DocumentPreviewPolicy: [(WKContentRuleList?) -> Void]] = [:]
 
-    private static let identifier = "wiki.qaq.fila.document-offline"
-    /// One rule per scheme: rule lists take no alternation in a URL filter.
-    private static let source = """
-    [
-      {"trigger": {"url-filter": ".*"}, "action": {"type": "block"}},
-      {"trigger": {"url-filter": "^\(DocumentSchemeHandler.scheme):"}, "action": {"type": "ignore-previous-rules"}},
-      {"trigger": {"url-filter": "^x-apple-ql-id:"}, "action": {"type": "ignore-previous-rules"}},
-      {"trigger": {"url-filter": "^about:"}, "action": {"type": "ignore-previous-rules"}},
-      {"trigger": {"url-filter": "^data:"}, "action": {"type": "ignore-previous-rules"}},
-      {"trigger": {"url-filter": "^blob:"}, "action": {"type": "ignore-previous-rules"}}
-    ]
-    """
-
-    /// On the main thread, like its callers. A failed compile is not kept, so
-    /// the next document tries again.
-    static func load(_ completion: @escaping (WKContentRuleList?) -> Void) {
-        if let compiled {
-            completion(compiled)
-            return
-        }
-        if waiting != nil {
-            waiting?.append(completion)
-            return
-        }
-        waiting = [completion]
-        guard let store = WKContentRuleListStore.default() else {
-            finish(nil)
-            return
-        }
-        store.compileContentRuleList(forIdentifier: identifier, encodedContentRuleList: source) { list, error in
-            if let error {
-                FilaLog.warning("document content rules: \(error)")
-            }
-            finish(list)
-        }
-    }
-
-    private static func finish(_ list: WKContentRuleList?) {
-        compiled = list
-        let callers = waiting ?? []
-        waiting = nil
-        for caller in callers {
-            caller(list)
+    static func load(_ policy: DocumentPreviewPolicy, _ completion: @escaping (WKContentRuleList?) -> Void) {
+        if let list = compiled[policy] { completion(list); return }
+        guard let store = WKContentRuleListStore.default() else { completion(nil); return }
+        waiting[policy, default: []].append(completion)
+        guard waiting[policy]?.count == 1 else { return }
+        store.compileContentRuleList(forIdentifier: "wiki.qaq.fila.preview." + policy.rawValue,
+                                     encodedContentRuleList: policy.contentRules(documentScheme: DocumentSchemeHandler.scheme)) { list, error in
+            if let error { FilaLog.warning("document content rules: \(error)") }
+            compiled[policy] = list
+            for caller in waiting.removeValue(forKey: policy) ?? [] { caller(list) }
         }
     }
 }

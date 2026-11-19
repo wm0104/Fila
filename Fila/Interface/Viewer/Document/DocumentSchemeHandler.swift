@@ -21,6 +21,7 @@ final class DocumentSchemeHandler: NSObject, WKURLSchemeHandler {
     private let file: DescriptorFile
     private let name: String
     private let mimeType: String
+    private let contentSecurityPolicy: String?
     private let queue = DispatchQueue(label: "wiki.qaq.fila.document-reader", qos: .userInitiated)
     /// Loads in progress, by task. Main thread only.
     private var loads: [ObjectIdentifier: Load] = [:]
@@ -28,7 +29,8 @@ final class DocumentSchemeHandler: NSObject, WKURLSchemeHandler {
     private static let chunkByteCount = 1024 * 1024
     private static let chunksInFlight = 4
 
-    init(file: DescriptorFile, name: String, mimeType: String) {
+    init(file: DescriptorFile, name: String, mimeType: String, contentSecurityPolicy: String? = nil) {
+        self.contentSecurityPolicy = contentSecurityPolicy
         self.file = file
         self.name = name
         self.mimeType = mimeType
@@ -54,15 +56,20 @@ final class DocumentSchemeHandler: NSObject, WKURLSchemeHandler {
             task.didFailWithError(URLError(.fileDoesNotExist))
             return
         }
+        let byteCount = file.byteCount
+        let response: URLResponse
+        if let contentSecurityPolicy {
+            guard let html = HTTPURLResponse(url: requested, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: [
+                "Content-Type": mimeType, "Content-Length": String(byteCount), "Referrer-Policy": "no-referrer",
+                "Content-Security-Policy": contentSecurityPolicy, "X-Content-Type-Options": "nosniff",
+            ]) else { task.didFailWithError(URLError(.badServerResponse)); return }
+            response = html
+        } else {
+            response = URLResponse(url: requested, mimeType: mimeType, expectedContentLength: Int(byteCount), textEncodingName: nil)
+        }
         let load = Load()
         loads[ObjectIdentifier(task)] = load
-        let byteCount = file.byteCount
-        task.didReceive(URLResponse(
-            url: requested,
-            mimeType: mimeType,
-            expectedContentLength: Int(byteCount),
-            textEncodingName: nil,
-        ))
+        task.didReceive(response)
 
         let file = file
         queue.async { [weak self] in

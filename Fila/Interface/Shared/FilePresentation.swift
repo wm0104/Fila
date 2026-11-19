@@ -96,7 +96,7 @@ enum FilePresentation {
         case .audio: return .artwork("audio")
         case .video: return .artwork("video")
         case .pdf: return .artwork("pdf")
-        case .text: return .artwork("text")
+        case .html, .text: return .artwork("text")
         case .document, .sqlite, .binary, nil:
             // A declared type the app has no artwork for — an office document
             // — is drawn by the device. A type the OS declares nothing for,

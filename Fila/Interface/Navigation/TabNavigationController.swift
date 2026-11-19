@@ -25,9 +25,28 @@ final class TabNavigationController: UINavigationController {
         content.bar = bar
     }
 
+    /// In a pair only the focused stack supplies the window's bars. Folder
+    /// pages still own their normal items, including while they are unfocused.
+    var suppliesBars = true {
+        didSet {
+            guard suppliesBars != oldValue else { return }
+            setNavigationBarHidden(false, animated: false)
+            setToolbarHidden(false, animated: false)
+        }
+    }
+
+    override func setNavigationBarHidden(_ hidden: Bool, animated: Bool) {
+        super.setNavigationBarHidden(hidden || !suppliesBars, animated: animated)
+    }
+
     override func setToolbarHidden(_: Bool, animated: Bool) {
         let hasItems = topViewController?.toolbarItems?.isEmpty == false
-        super.setToolbarHidden(!hasItems, animated: animated)
+        super.setToolbarHidden(!suppliesBars || !hasItems, animated: animated)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        (parent as? BrowserPanesController)?.layoutPanes()
     }
 
     // MARK: - Transitions that wait for their destination

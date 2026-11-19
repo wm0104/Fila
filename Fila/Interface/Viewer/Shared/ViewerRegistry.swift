@@ -60,6 +60,8 @@ enum ViewerRegistry {
             PDFViewerViewController(details: details, file: file)
         case .document:
             DocumentViewerViewController(details: details, file: file)
+        case .html:
+            DocumentViewerViewController(details: details, file: file, policy: .offlineHTML)
         case .text:
             TextViewerViewController(details: details, file: file, link: link)
         // A SQLite browser is a viewer several times the size of the others and
@@ -153,7 +155,7 @@ final class ViewerContainerViewController: TabContentViewController {
             // A document with nothing in it, or too much to draw, opens as its
             // bytes: an empty `.rtf` is a text file to write in, and a 300 MB
             // `.docx` browses as the archive it is.
-            if format == .document, file.byteCount == 0
+            if format == .document || format == .html, file.byteCount == 0
                 || (try? PreviewLimits.validate(byteCount: file.byteCount, format: format)) == nil
             {
                 format = contentFormat
@@ -265,6 +267,7 @@ final class ViewerContainerViewController: TabContentViewController {
         if FileFormat.documentMIMEType(name: fileName) != nil {
             choices.append(.document)
         }
+        if FileFormat.detect(name: fileName) == .html { choices.append(.html) }
         let openAs = UIMenu(
             title: String(localized: "Open As"),
             image: UIImage(systemName: "doc.text.magnifyingglass"),
@@ -334,6 +337,14 @@ final class ViewerContainerViewController: TabContentViewController {
         )
     }
 
+    /// Reuse the descriptor the user is looking at; never grant a path (or a
+    /// later replacement at that path) the permissions of this preview.
+    func setHTMLPolicy(_ policy: DocumentPreviewPolicy, file: DescriptorFile, from viewer: DocumentViewerViewController) {
+        guard child === viewer, detectedFormat == .html, menuItem.isEnabled else { return }
+        embed(DocumentViewerViewController(details: details, file: file, policy: policy))
+        refreshBarItems()
+    }
+
     /// The document viewer's way out: WebKit declined the file or failed to
     /// draw it. The screen says so and opens nothing else — a `.docx` shown
     /// as the ZIP it is reads as Fila mistaking it for an archive. Open As
@@ -343,7 +354,7 @@ final class ViewerContainerViewController: TabContentViewController {
     /// opened: an Open As chosen during the conversion has already replaced
     /// the document, and a failure page landing on top would hide it.
     func documentViewerFailed(from viewer: UIViewController) {
-        guard child === viewer, detectedFormat == .document, menuItem.isEnabled else { return }
+        guard child === viewer, detectedFormat == .document || detectedFormat == .html, menuItem.isEnabled else { return }
         FilaLog.info("open \(details.path): WebKit could not display the document")
         detectedFormat = nil
         present(failurePage: ViewerFailureViewController(
@@ -419,6 +430,7 @@ final class ViewerContainerViewController: TabContentViewController {
         case .video: String(localized: "Video")
         case .pdf: String(localized: "PDF")
         case .document: String(localized: "Document")
+        case .html: String(localized: "Web Page")
         case .sqlite: String(localized: "Database")
         case .text: String(localized: "Text")
         case .binary: String(localized: "Hex")

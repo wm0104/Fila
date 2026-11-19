@@ -8,7 +8,8 @@ import UIKit
 /// directories; switching tabs never reconstructs an editor or its document.
 final class TabContainerViewController: UIViewController {
     private struct Content {
-        let navigation: UINavigationController
+        let panes: BrowserPanesController
+        var navigation: TabNavigationController { panes.active }
         var preview: UIImage?
     }
 
@@ -60,7 +61,7 @@ final class TabContainerViewController: UIViewController {
 
     /// Hidden tabs retain work even when their navigation is not a child on screen.
     var retainedNavigations: [UINavigationController] {
-        tabs.values.map(\.navigation)
+        tabs.values.flatMap(\.panes.navigations)
     }
 
     /// Re-installs this window's own tab — the page the user is looking at
@@ -80,7 +81,7 @@ final class TabContainerViewController: UIViewController {
     /// The screen whose navigation item the visible bar reads: a tab's top, or
     /// the overview.
     var visibleTop: UIViewController? {
-        (displayed as? UINavigationController)?.topViewController
+        (displayed as? BrowserPanesController)?.active.topViewController ?? (displayed as? UINavigationController)?.topViewController
     }
 
     func refreshSidebarButton() {
@@ -188,7 +189,7 @@ final class TabContainerViewController: UIViewController {
     func removeClosedTabs() {
         let remaining = Set(store.tabs.map(\.id))
         for id in tabs.keys.filter({ !remaining.contains($0) }) {
-            guard let closed = tabs.removeValue(forKey: id)?.navigation else { continue }
+            guard let closed = tabs.removeValue(forKey: id)?.panes else { continue }
             closed.willMove(toParent: nil)
             closed.viewIfLoaded?.removeFromSuperview()
             closed.removeFromParent()
@@ -202,21 +203,64 @@ final class TabContainerViewController: UIViewController {
     }
 
     func confirmClosingTab(_ id: UUID, confirmed: @escaping () -> Void) {
-        guard let navigation = tabs[id]?.navigation else { confirmed(); return }
-        let viewer = navigation.viewControllers.compactMap { $0 as? ViewerContainerViewController }.last
-        guard let confirm = viewer?.confirmReplacement else { confirmed(); return }
-        let source = navigation.topViewController
+        guard let panes = tabs[id]?.panes else { confirmed(); return }
+        let stacks = panes.navigations
+        guard !stacks.contains(where: { $0.refusesRemoving($0.viewControllers) }) else { return }
+        func check(_ remaining: ArraySlice<TabNavigationController>) {
+            guard let next = remaining.first else { confirmed(); return }
+            confirmDiscarding(next, in: panes, id: id) { check(remaining.dropFirst()) }
+        }
+        check(stacks[...])
+    }
+
+    /// An unfocused stack may still own an editor. Ask the editor, not a
+    /// second discard dialog; show its own tab and pane only if it needs UI.
+    private func confirmDiscarding(_ stack: TabNavigationController, in panes: BrowserPanesController, id: UUID, then done: @escaping () -> Void) {
+        guard let confirm = stack.viewControllers.compactMap({ $0 as? ViewerContainerViewController }).last?.confirmReplacement
+        else { done(); return }
+        let source = stack.topViewController
+        let wasOverview = isShowingOverview
         confirm({ [weak self] in
             self?.shell?.selectTab(id)
-        }, { [weak self, weak navigation, weak source] in
-            guard let self, let navigation, let source,
-                  tabs[id]?.navigation === navigation,
-                  navigation.topViewController === source else { return }
-            // If a prompt displayed the editor, return to a settled overview
-            // before removing it. Clean tabs never leave the existing overview.
-            showTabSwitcher()
-            confirmed()
+            panes.focus(stack)
+        }, { [weak self, weak source] in
+            guard let self, tabs[id]?.panes === panes, panes.navigations.contains(where: { $0 === stack }),
+                  stack.topViewController === source else { return }
+            if wasOverview { showTabSwitcher() }
+            done()
         })
+    }
+
+    func paneMenu(from page: UIViewController) -> UIMenuElement? {
+        guard let id = installedTabID, let panes = tabs[id]?.panes, displayed === panes,
+              panes.active.topViewController === page else { return nil }
+        let icon = UIImage(systemName: "rectangle.split.2x1")
+        if let other = panes.navigations.first(where: { $0 !== panes.active }) {
+            return UIAction(title: String(localized: "Close Dual Pane"), image: icon) { [weak self, weak page, weak panes] _ in
+                guard let self, let panes, let page, visibleTop === page, !other.refusesRemoving(other.viewControllers) else { return }
+                confirmDiscarding(other, in: panes, id: id) { [weak self] in
+                    guard self?.displayed === panes, let keep = page.navigationController as? TabNavigationController,
+                          keep.topViewController === page, panes.navigations.contains(where: { $0 === other }) else { return }
+                    panes.focus(keep)
+                    panes.closeOther()
+                }
+            }
+        }
+        let open: (UIViewController?) -> Void = { [weak self, weak page, weak panes] folder in
+            guard let self, let page, let panes, visibleTop === page, panes.second == nil,
+                  let folder, folder is FileBrowserViewController || folder is FileServiceBrowserViewController else { return }
+            let next = makeNavigation([folder])
+            next.delegate = self
+            panes.open(next)
+        }
+        var destinations: [UIMenuElement] = [UIAction(title: String(localized: "Current Folder")) { [weak page] _ in
+            if let local = page as? FileBrowserViewController { open(FileBrowserViewController(directory: local.directory)) }
+            if let remote = page as? FileServiceBrowserViewController { open(FileServiceBrowserViewController(backend: remote.backend, path: remote.path)) }
+        }]
+        destinations += FilaMenu.sidebar(open: { open(FileBrowserViewController(directory: $0)) }, openLocation: {
+            open(SidebarLocation.screen(for: $0))
+        }, foldersOnly: true)
+        return UIMenu(title: String(localized: "Open Dual Pane"), image: icon, children: destinations)
     }
 
     private func showConnecting() {
@@ -252,18 +296,25 @@ final class TabContainerViewController: UIViewController {
 
     /// One creation boundary, also usable by the Debug identity check without
     /// opening files. Existing tabs never invoke the factory again.
-    private func showTab(_ id: UUID, makeNavigation: () -> UINavigationController) {
+    private func showTab(_ id: UUID, makeNavigation: () -> TabNavigationController) {
         if installedTabID != id {
             capturePreview()
         }
         if tabs[id] == nil {
             let navigation = makeNavigation()
             navigation.delegate = self
-            tabs[id] = Content(navigation: navigation)
+            let panes = BrowserPanesController(navigation)
+            panes.focusChanged = { [weak self, weak panes] in
+                guard let self, let panes, displayed === panes else { return }
+                jumpGeneration += 1
+                refreshSidebarButton()
+                captureCurrentTab()
+            }
+            tabs[id] = Content(panes: panes)
         }
         installedTabID = id
-        if let navigation {
-            display(navigation)
+        if let panes = tabs[id]?.panes {
+            display(panes)
         }
     }
 
@@ -366,8 +417,9 @@ final class TabContainerViewController: UIViewController {
     }
 
     private func capturePreview() {
-        guard settled, transition == nil, let id = installedTabID, let navigation, displayed === navigation,
-              let surface = navigation.topViewController?.viewIfLoaded, surface.window != nil else { return }
+        guard settled, transition == nil, let id = installedTabID, let panes = tabs[id]?.panes, displayed === panes,
+              let surface = panes.second == nil ? panes.active.topViewController?.viewIfLoaded : panes.viewIfLoaded,
+              surface.window != nil else { return }
         // The capture is cropped to the card thumbnail's aspect, so what a
         // card shows of this page under `.scaleAspectFill` is the whole image
         // — the zoom can land on the same pixels in any geometry.
@@ -453,7 +505,7 @@ final class TabContainerViewController: UIViewController {
         }
         // An overview is disposable; inactive tab navigation stays parented so
         // disappearing does not mean the terminal or editor was closed.
-        if let previous, !tabs.values.contains(where: { $0.navigation === previous }) {
+        if let previous, !tabs.values.contains(where: { $0.panes === previous }) {
             previous.willMove(toParent: nil)
             previous.removeFromParent()
         }
@@ -511,7 +563,8 @@ final class TabContainerViewController: UIViewController {
     /// screen's view cropped to the thumbnail's aspect, which is what
     /// `capturePreview` draws — in the container's coordinates.
     private func contentRect(of controller: UIViewController?) -> CGRect {
-        guard let page = (controller as? UINavigationController)?.topViewController?.viewIfLoaded
+        guard let panes = controller as? BrowserPanesController,
+              let page = panes.second == nil ? panes.active.topViewController?.viewIfLoaded : panes.viewIfLoaded
         else { return view.bounds }
         let full = page.convert(page.bounds.inset(by: page.safeAreaInsets), to: view)
         return TabSwitcherViewController.thumbnailRegion(
@@ -617,6 +670,7 @@ extension TabContainerViewController: UINavigationControllerDelegate {
         didShow viewController: UIViewController,
         animated _: Bool,
     ) {
+        (navigation.parent as? BrowserPanesController)?.layoutPanes()
         guard navigation === self.navigation else { return }
         // A cancelled interactive pop never reaches willShow for the controller
         // that stays; give it the sidebar toggle back here.

@@ -27,8 +27,9 @@ enum FilaMenu {
         attributes: UIMenuElement.Attributes = [],
         open: @escaping (String) -> Void,
         openLocation: ((BackendLocation) -> Void)?,
+        foldersOnly: Bool = false,
     ) -> [UIMenuElement] {
-        let places = placeActions(attributes: attributes, open: open, openLocation: openLocation)
+        let places = placeActions(attributes: attributes, open: open, openLocation: foldersOnly ? nil : openLocation)
         let servers = SidebarLocation.servers.compactMap {
             root($0, attributes: attributes, openLocation: openLocation)
         }

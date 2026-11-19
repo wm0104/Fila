@@ -16,6 +16,10 @@ final class AppBackendShell: BackendShell {
         .shared
     }
 
+    func paneMenu(from presenter: UIViewController) -> UIMenuElement? {
+        presenter.shell?.content.paneMenu(from: presenter)
+    }
+
     func browser(for location: BackendLocation) -> UIViewController? {
         guard let backend = BackendComposition.backends.first(where: { $0.id == location.backend }) as? LocalFileBackend,
               let path = try? ServicePath(location.item)
