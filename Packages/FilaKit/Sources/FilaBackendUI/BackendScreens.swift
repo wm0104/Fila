@@ -95,8 +95,6 @@
         func presentSettings(from presenter: UIViewController)
         /// Native Settings submenu, built by the host when More is opened.
         func settingsMenu(from presenter: UIViewController) -> UIMenu
-        /// The host's pane switch, offered only for directories in a browser tab.
-        func paneMenu(from presenter: UIViewController) -> UIMenuElement?
 
         /// The app's clipboard as a module screen sees it: nil while empty.
         /// `Notification.Name.filaClipboardChanged` says when to ask again.

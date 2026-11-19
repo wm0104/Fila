@@ -126,11 +126,11 @@ final class RootSplitViewController: UISplitViewController {
         return item
     }
 
-    private func makeSidebarToggle() -> UIBarButtonItem {
+    private func makeSidebarToggle(for source: UIViewController? = nil) -> UIBarButtonItem {
         UIBarButtonItem(
             image: UIImage(systemName: "sidebar.leading"),
-            primaryAction: UIAction { [weak self] _ in
-                guard let self else { return }
+            primaryAction: UIAction { [weak self, weak source] _ in
+                guard let self, source.map(content.focusPage) != false else { return }
                 if isCollapsed {
                     presentSidebar()
                 } else if displayMode == .secondaryOnly {
@@ -151,11 +151,12 @@ final class RootSplitViewController: UISplitViewController {
 
     /// A standard Back item preserves the guarded history menu while allowing
     /// the sidebar toggle to move between columns independently.
-    private func makeNavigationBack() -> UIBarButtonItem {
+    private func makeNavigationBack(for source: UIViewController) -> UIBarButtonItem {
         UIBarButtonItem(
             image: UIImage(systemName: "chevron.backward"),
-            primaryAction: UIAction { [weak self] _ in
-                self?.navigateBack()
+            primaryAction: UIAction { [weak self, weak source] _ in
+                guard let source else { return }
+                self?.navigateBack(from: source)
             },
         ).then {
             $0.accessibilityLabel = String(localized: "Back")
@@ -171,7 +172,7 @@ final class RootSplitViewController: UISplitViewController {
     private var animateToggleTransfer = false
 
     func configureSidebarButton(for controller: UIViewController, leadingItems: [UIBarButtonItem]? = nil) {
-        guard controller === content.visibleTop, let navigation = controller.navigationController,
+        guard content.visiblePages.contains(where: { $0 === controller }), let navigation = controller.navigationController,
               let index = navigation.viewControllers.firstIndex(of: controller) else { return }
         prepareNavigationItems(
             for: controller,
@@ -190,8 +191,8 @@ final class RootSplitViewController: UISplitViewController {
         leadingItems: [UIBarButtonItem]? = nil,
     ) {
         let item = controller.navigationItem
-        let toggle = self.item(in: sidebarToggles, for: controller, make: makeSidebarToggle)
-        let back = self.item(in: navigationBacks, for: controller, make: makeNavigationBack)
+        let toggle = self.item(in: sidebarToggles, for: controller) { makeSidebarToggle(for: controller) }
+        let back = self.item(in: navigationBacks, for: controller) { makeNavigationBack(for: controller) }
         let inSidebar = !isCollapsed && (announcedDisplayMode ?? displayMode) != .secondaryOnly
         // Collapsed, the toggle opens Places as a sheet, not a column: say so
         // with the shape of an index rather than of a sidebar.
@@ -205,15 +206,13 @@ final class RootSplitViewController: UISplitViewController {
                 back.menu = UIMenu(children: ancestors.reversed().map { destination in
                     UIAction(
                         title: destination.navigationItem.title ?? destination.title ?? String(localized: "Back"),
-                    ) { [weak self, weak destination] _ in
-                        guard let destination else { return }
-                        self?.navigateBack(to: destination)
+                    ) { [weak self, weak controller, weak destination] _ in
+                        guard let controller, let destination else { return }
+                        self?.navigateBack(from: controller, to: destination)
                     }
                 })
                 buttons.insert(back, at: 0)
-            } else if ancestors.isEmpty, buttons.isEmpty,
-                      let browser = controller as? FileBrowserViewController, hasParent(browser.directory)
-            {
+            } else if ancestors.isEmpty, buttons.isEmpty, parentFolder(for: controller) != nil {
                 back.menu = nil
                 buttons.insert(back, at: 0)
             }
@@ -226,7 +225,7 @@ final class RootSplitViewController: UISplitViewController {
             // menu, not the page. A viewer, an editor, a settings page or the
             // tab overview is not a folder and has no places to jump to; they
             // keep Back alone.
-            if !inSidebar, controller is FileBrowserViewController {
+            if !inSidebar, controller is FileBrowserViewController || controller is FileServiceBrowserViewController {
                 buttons.append(toggle)
             }
         }
@@ -251,16 +250,25 @@ final class RootSplitViewController: UISplitViewController {
         return ![root, URL(fileURLWithPath: root).resolvingSymlinksInPath().path].contains(directory)
     }
 
-    private func navigateBack(to requested: UIViewController? = nil) {
-        guard let source = content.visibleTop,
-              !source.isEditing, !source.navigationItem.hidesBackButton,
+    /// A pane opened at a deep folder starts with a single page. Do not build or
+    /// list its parent just to decide whether to show the Back button.
+    private func parentFolder(for page: UIViewController) -> (() -> UIViewController)? {
+        if let local = page as? FileBrowserViewController, hasParent(local.directory) {
+            return { FileBrowserViewController(directory: (local.directory as NSString).deletingLastPathComponent) }
+        }
+        if let remote = page as? FileServiceBrowserViewController, let path = remote.path.parent {
+            return { FileServiceBrowserViewController(backend: remote.backend, path: path) }
+        }
+        return nil
+    }
+
+    private func navigateBack(from source: UIViewController, to requested: UIViewController? = nil) {
+        guard content.focusPage(source), !source.isEditing, !source.navigationItem.hidesBackButton,
               let navigation = source.navigationController,
               navigation.transitionCoordinator == nil else { return }
         if navigation.viewControllers.count == 1 {
-            guard requested == nil, let browser = source as? FileBrowserViewController,
-                  hasParent(browser.directory) else { return }
-            let parent = FileBrowserViewController(directory: (browser.directory as NSString).deletingLastPathComponent)
-            navigation.setViewControllers([parent, source], animated: false)
+            guard requested == nil, let makeParent = parentFolder(for: source) else { return }
+            navigation.setViewControllers([makeParent(), source], animated: false)
             navigation.popViewController(animated: true)
             return
         }
@@ -589,12 +597,11 @@ extension RootSplitViewController: UISplitViewControllerDelegate {
 
 extension RootSplitViewController: UIGestureRecognizerDelegate {
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        guard let top = content.visibleTop, let navigation = top.navigationController,
-              gestureRecognizer === navigation.interactivePopGestureRecognizer,
-              navigation.viewControllers.count > 1, navigation.transitionCoordinator == nil,
+        guard let top = content.visiblePages.first(where: { $0.navigationController?.interactivePopGestureRecognizer === gestureRecognizer }),
+              let navigation = top.navigationController, navigation.viewControllers.count > 1, navigation.transitionCoordinator == nil,
               (navigation as? TabNavigationController)?.isTransitionPending != true,
               !top.isEditing, !top.navigationItem.hidesBackButton,
               !top.isModalInPresentation else { return false }
-        return true
+        return content.focusPage(top)
     }
 }

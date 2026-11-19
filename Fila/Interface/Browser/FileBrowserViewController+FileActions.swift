@@ -152,7 +152,6 @@ extension FileBrowserViewController {
                 image: UIImage(systemName: "arrow.right.circle"),
                 children: goMenuElements(),
             ),
-            shell?.content.paneMenu(from: self),
             ConfigurationBackupController.action(directory: directory, from: self),
             settingsMenuElement,
         ].compactMap { $0 }

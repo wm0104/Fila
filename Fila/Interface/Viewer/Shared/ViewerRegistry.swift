@@ -261,13 +261,14 @@ final class ViewerContainerViewController: TabContentViewController {
         isModalInPresentation = child?.isModalInPresentation ?? false
         navigationController?.isModalInPresentation = isModalInPresentation
 
-        var choices: [FileFormat] = [.text, .binary, .propertyList, .machO, .archive, .image]
+        var choices: [FileFormat] = [.text]
+        if FileFormat.detect(name: fileName) == .html { choices.append(.html) }
+        choices += [.binary, .propertyList, .machO, .archive, .image]
         // Only a name WebKit has a type for: the way back to the page after
         // opening a `.docx` as an archive, or after it fell back to one.
         if FileFormat.documentMIMEType(name: fileName) != nil {
             choices.append(.document)
         }
-        if FileFormat.detect(name: fileName) == .html { choices.append(.html) }
         let openAs = UIMenu(
             title: String(localized: "Open As"),
             image: UIImage(systemName: "doc.text.magnifyingglass"),
@@ -430,7 +431,7 @@ final class ViewerContainerViewController: TabContentViewController {
         case .video: String(localized: "Video")
         case .pdf: String(localized: "PDF")
         case .document: String(localized: "Document")
-        case .html: String(localized: "Web Page")
+        case .html: "HTML"
         case .sqlite: String(localized: "Database")
         case .text: String(localized: "Text")
         case .binary: String(localized: "Hex")

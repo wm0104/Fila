@@ -5,26 +5,24 @@ import Foundation
 import Testing
 
 @Suite struct PaneAndHTMLTests {
-    @Test(arguments: [CGSize(width: 390, height: 844), CGSize(width: 844, height: 390)])
-    func dividerTracksTheUsableArea(size: CGSize) {
-        let area = CGRect(origin: .zero, size: size).insetBy(dx: 12, dy: 44)
-        let pair = PaneLayout(region: area, host: size, fraction: 0.5)
-        let first = pair.headings[0].union(pair.lists[0]), second = pair.headings[1].union(pair.lists[1])
-        #expect(first.union(pair.divider).union(second) == area)
-        #expect(!first.intersects(second))
-        if size.width > size.height {
-            #expect(pair.horizontal && first.maxX == pair.divider.minX && second.minX == pair.divider.maxX)
-            #expect(abs(first.width - second.width) <= 1)
-        } else {
-            #expect(!pair.horizontal && first.maxY == pair.divider.minY && second.minY == pair.divider.maxY)
-            #expect(abs(first.height - second.height) <= 1)
-        }
-        let small = PaneLayout(region: area, host: size, fraction: -1)
-        let large = PaneLayout(region: area, host: size, fraction: 2)
-        #expect(small.divider == PaneLayout(region: area, host: size, fraction: 0.22).divider)
-        #expect(large.divider == PaneLayout(region: area, host: size, fraction: 0.78).divider)
-        #expect(pair.horizontal ? small.divider.minX < large.divider.minX : small.divider.minY < large.divider.minY)
-        #expect(!small.lists[0].isEmpty && !large.lists[1].isEmpty)
+    @Test(arguments: [CGFloat(304), 737])
+    func dividerTracksTheUsableHeight(height: CGFloat) {
+        let top: CGFloat = 47, bottom = top + height
+        let pair = PaneLayout(top: top, bottom: bottom, fraction: 0.5)
+        #expect(pair.dividerHeight == 20)
+        #expect(pair.available == height - pair.dividerHeight)
+        let upper = pair.dividerTop - top, lower = bottom - pair.dividerTop - pair.dividerHeight
+        #expect(abs(upper - lower) <= 1)
+        let small = PaneLayout(top: top, bottom: bottom, fraction: -1)
+        let large = PaneLayout(top: top, bottom: bottom, fraction: 2)
+        #expect(small.dividerTop == top + (pair.available * 0.22).rounded())
+        #expect(large.dividerTop == top + (pair.available * 0.78).rounded())
+        #expect(small.dividerTop > top && large.dividerTop + large.dividerHeight < bottom)
+    }
+
+    @Test func noUsableHeightDuringLayout() {
+        let pair = PaneLayout(top: 10, bottom: 0, fraction: 0.5)
+        #expect(pair.available == 0 && pair.dividerHeight == 0 && pair.dividerTop == 10)
     }
 
     @Test(arguments: [DocumentPreviewPolicy.offlineHTML, .interactiveHTML, .office])

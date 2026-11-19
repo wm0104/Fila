@@ -54,6 +54,11 @@
             didSet { applyToolbar(animated: false) }
         }
 
+        /// Supplied by the tab only for a directory page, immediately before Tabs.
+        public var paneSwitchItem: UIBarButtonItem? {
+            didSet { applyToolbar(animated: false) }
+        }
+
         /// What the Search button does. Nothing by default.
         open func search() {}
 
@@ -321,15 +326,28 @@
                 items.append(bar?.pathBarItem ?? ownPathBarItem)
             }
             if let bar {
-                items += [bar.trailingSpace, bar.tabsItem]
+                items.append(bar.trailingSpace)
+                if let paneSwitchItem { items.append(paneSwitchItem) }
+                items.append(bar.tabsItem)
             } else if !crumbs.isEmpty {
                 items.append(ownTrailingSpace)
             }
             return items
         }
 
+        /// A custom-view item can belong to only one UIKit toolbar at a time.
+        public var usesPaneToolbar = false {
+            didSet {
+                if usesPaneToolbar != oldValue { applyToolbar(animated: false) }
+            }
+        }
+
+        public var paneToolbarItems: [UIBarButtonItem] {
+            usesPaneToolbar ? (toolbarOverride ?? standardToolbarItems) : []
+        }
+
         private func applyToolbar(animated: Bool) {
-            let items = toolbarOverride ?? standardToolbarItems
+            let items = usesPaneToolbar ? [] : (toolbarOverride ?? standardToolbarItems)
             if (toolbarItems ?? []) != items {
                 setToolbarItems(items, animated: canAnimateToolbar(animated))
             }
@@ -410,7 +428,7 @@
             // reserved only while they share its bar.
             let symbolsShareBar = !barItemsStandVertically
             let hasLeading = symbolsShareBar && (searchPlacementItem != nil || wantsSearchButton)
-            let hasTrailing = symbolsShareBar && bar != nil
+            let trailingCount: CGFloat = symbolsShareBar && bar != nil ? (paneSwitchItem == nil ? 1 : 2) : 0
             let reserved: CGFloat
             if #available(iOS 26.0, *) {
                 // The gap between capsules equals the bar's outer margin, so
@@ -425,10 +443,10 @@
                 let button: CGFloat = 48
                 let capsuleInset: CGFloat = 5
                 reserved = 2 * capsuleInset + 2 * margin
-                    + (hasLeading ? button + margin : 0) + (hasTrailing ? button + margin : 0)
+                    + (hasLeading ? button + margin : 0) + trailingCount * (button + margin)
             } else {
                 let slot = FilaUI.minimumTapTarget + FilaUI.Spacing.large + FilaUI.Spacing.small
-                reserved = 2 * FilaUI.Spacing.large + (hasLeading ? slot : 0) + (hasTrailing ? slot : 0)
+                reserved = 2 * FilaUI.Spacing.large + (hasLeading ? slot : 0) + trailingCount * slot
             }
             let target = max(FilaUI.minimumTapTarget, available - reserved)
             let current = width.layoutConstraints.first?.constant ?? 0

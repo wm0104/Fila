@@ -84,9 +84,21 @@ final class TabContainerViewController: UIViewController {
         (displayed as? BrowserPanesController)?.active.topViewController ?? (displayed as? UINavigationController)?.topViewController
     }
 
+    var visiblePages: [UIViewController] {
+        guard let panes = displayed as? BrowserPanesController else { return visibleTop.map { [$0] } ?? [] }
+        return panes.navigations.filter { $0 === panes.active || $0.viewIfLoaded?.isHidden == false }.compactMap(\.topViewController)
+    }
+
+    /// A bar action (including VoiceOver or a history menu) belongs to the stack
+    /// that displayed it; it need not have received a finger touch first.
+    func focusPage(_ page: UIViewController) -> Bool {
+        if let panes = displayed as? BrowserPanesController, let nav = page.navigationController as? TabNavigationController,
+           visiblePages.contains(where: { $0 === page }) { panes.focus(nav) }
+        return visibleTop === page
+    }
+
     func refreshSidebarButton() {
-        guard let top = visibleTop else { return }
-        owner?.configureSidebarButton(for: top)
+        for top in visiblePages { owner?.configureSidebarButton(for: top) }
     }
 
     /// Move the whole owner between compact and wide hosts, preserving every
@@ -231,36 +243,29 @@ final class TabContainerViewController: UIViewController {
         })
     }
 
-    func paneMenu(from page: UIViewController) -> UIMenuElement? {
+    func togglePanes(from page: UIViewController) {
         guard let id = installedTabID, let panes = tabs[id]?.panes, displayed === panes,
-              panes.active.topViewController === page else { return nil }
-        let icon = UIImage(systemName: "rectangle.split.2x1")
+              panes.active.topViewController === page else { return }
         if let other = panes.navigations.first(where: { $0 !== panes.active }) {
-            return UIAction(title: String(localized: "Close Dual Pane"), image: icon) { [weak self, weak page, weak panes] _ in
-                guard let self, let panes, let page, visibleTop === page, !other.refusesRemoving(other.viewControllers) else { return }
-                confirmDiscarding(other, in: panes, id: id) { [weak self] in
-                    guard self?.displayed === panes, let keep = page.navigationController as? TabNavigationController,
-                          keep.topViewController === page, panes.navigations.contains(where: { $0 === other }) else { return }
-                    panes.focus(keep)
-                    panes.closeOther()
-                }
+            guard !other.refusesRemoving(other.viewControllers) else { return }
+            let keep = panes.active
+            confirmDiscarding(other, in: panes, id: id) { [weak self] in
+                guard self?.displayed === panes, keep.topViewController === page,
+                      panes.navigations.contains(where: { $0 === other }) else { return }
+                panes.focus(keep)
+                panes.closeOther()
             }
+            return
         }
-        let open: (UIViewController?) -> Void = { [weak self, weak page, weak panes] folder in
-            guard let self, let page, let panes, visibleTop === page, panes.second == nil,
-                  let folder, folder is FileBrowserViewController || folder is FileServiceBrowserViewController else { return }
-            let next = makeNavigation([folder])
-            next.delegate = self
-            panes.open(next)
-        }
-        var destinations: [UIMenuElement] = [UIAction(title: String(localized: "Current Folder")) { [weak page] _ in
-            if let local = page as? FileBrowserViewController { open(FileBrowserViewController(directory: local.directory)) }
-            if let remote = page as? FileServiceBrowserViewController { open(FileServiceBrowserViewController(backend: remote.backend, path: remote.path)) }
-        }]
-        destinations += FilaMenu.sidebar(open: { open(FileBrowserViewController(directory: $0)) }, openLocation: {
-            open(SidebarLocation.screen(for: $0))
-        }, foldersOnly: true)
-        return UIMenu(title: String(localized: "Open Dual Pane"), image: icon, children: destinations)
+        let folder: UIViewController
+        if let local = page as? FileBrowserViewController {
+            folder = FileBrowserViewController(directory: local.directory)
+        } else if let remote = page as? FileServiceBrowserViewController {
+            folder = FileServiceBrowserViewController(backend: remote.backend, path: remote.path)
+        } else { return }
+        let next = makeNavigation([folder])
+        next.delegate = self
+        panes.open(next)
     }
 
     private func showConnecting() {

@@ -3,26 +3,23 @@ import SnapKit
 import Then
 import UIKit
 
-/// A tab keeps its real navigation stacks. The focused stack fills the window
-/// so UIKit lays out its bars normally; only its folder list is shortened.
-/// The other stack fits alongside that list, with no duplicate bars. A viewer
-/// or editor takes the full window until Back returns to the pair of folders.
+/// Two real navigation stacks, each with its own top bar. Only the active
+/// folder supplies items for the single bottom toolbar. A viewer stays full screen.
 final class BrowserPanesController: UIViewController, UIGestureRecognizerDelegate {
     private(set) var first: TabNavigationController
     private(set) var second: TabNavigationController?
     private(set) var active: TabNavigationController
     var navigations: [TabNavigationController] { [first, second].compactMap { $0 } }
-    private var other: TabNavigationController? { active === first ? second : first }
     var focusChanged: (() -> Void)?
 
     private let divider = PaneDivider(frame: .zero)
+    private let toolbar = UIToolbar()
+    private var dividerTop: Constraint?
+    private var dividerHeight: Constraint?
+    private var edges: [ObjectIdentifier: (top: Constraint, bottom: Constraint)] = [:]
     private var fraction: CGFloat = 0.5
-    private var region = CGRect.zero
-    private var horizontal = false
-    private weak var limitedList: UICollectionView?
-    private var lastRects: [CGRect] = []
+    private var available: CGFloat = 0
     private var arranging = false
-    private lazy var headings: [UIButton] = [makeHeading(), makeHeading()]
 
     init(_ navigation: TabNavigationController) {
         first = navigation
@@ -35,82 +32,74 @@ final class BrowserPanesController: UIViewController, UIGestureRecognizerDelegat
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        install(first)
-        for control in headings + [divider as UIView] {
-            view.addSubview(control)
-            control.isHidden = true
+        toolbar.isHidden = true
+        view.addSubview(toolbar)
+        toolbar.snp.makeConstraints {
+            $0.leading.trailing.equalTo(view.safeAreaLayoutGuide)
+            $0.bottom.equalTo(view.safeAreaLayoutGuide)
+        }
+        divider.isHidden = true
+        view.addSubview(divider)
+        divider.snp.makeConstraints {
+            $0.leading.trailing.equalToSuperview()
+            dividerTop = $0.top.equalToSuperview().constraint
+            dividerHeight = $0.height.equalTo(20).constraint
         }
         divider.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(resize(_:))))
         divider.adjust = { [weak self] step in
             guard let self else { return }
             setFraction(fraction + step)
         }
+        install(first)
     }
 
-    private func makeHeading() -> UIButton {
-        let button = UIButton(type: .system).then {
-            $0.titleLabel?.font = .preferredFont(forTextStyle: .footnote)
-            $0.titleLabel?.adjustsFontForContentSizeCategory = true
-            $0.titleLabel?.lineBreakMode = .byTruncatingMiddle
-            $0.backgroundColor = .secondarySystemBackground
+    private func install(_ navigation: TabNavigationController) {
+        addChild(navigation)
+        view.insertSubview(navigation.view, at: 0)
+        navigation.view.snp.makeConstraints {
+            $0.leading.trailing.equalToSuperview()
+            edges[ObjectIdentifier(navigation)] = ($0.top.equalToSuperview().constraint, $0.bottom.equalToSuperview().constraint)
         }
-        button.addAction(UIAction { [weak self, weak button] _ in
-            guard let self, let index = headings.firstIndex(where: { $0 === button }), navigations.indices.contains(index) else { return }
-            focus(navigations[index])
-        }, for: .touchUpInside)
-        return button
-    }
-
-    private func install(_ nav: TabNavigationController) {
-        addChild(nav)
-        view.insertSubview(nav.view, at: 0)
-        nav.view.snp.makeConstraints { $0.edges.equalToSuperview() }
-        // Observe the initial touch, before a file row, long press or drag
-        // dispatches to the shell. The recognizer never claims the gesture.
+        // Notice the initial touch before the row, drag or navigation button
+        // handles it. Returning false leaves all of their native gestures alone.
         let touch = UITapGestureRecognizer()
         touch.delegate = self
-        nav.view.addGestureRecognizer(touch)
-        nav.didMove(toParent: self)
+        navigation.view.addGestureRecognizer(touch)
+        navigation.didMove(toParent: self)
     }
 
     func open(_ navigation: TabNavigationController) {
         guard second == nil else { return }
         loadViewIfNeeded()
         second = navigation
-        navigation.suppliesBars = false
         fraction = 0.5
         install(navigation)
-        view.sendSubviewToBack(active.view)
+        navigations.forEach { $0.updatePaneSwitch(isOpen: true) }
         layoutPanes()
     }
 
     func closeOther() {
-        guard let other else { return }
-        restoreList()
+        guard let other = navigations.first(where: { $0 !== active }) else { return }
         other.willMove(toParent: nil)
         other.view.removeFromSuperview()
+        edges.removeValue(forKey: ObjectIdentifier(other))
         other.removeFromParent()
         first = active
         second = nil
+        first.updatePaneSwitch(isOpen: false)
         layoutPanes()
         focusChanged?()
     }
 
     func focus(_ navigation: TabNavigationController) {
         guard navigation !== active, navigations.contains(where: { $0 === navigation }) else { return }
-        restoreList()
-        active.suppliesBars = false
         active = navigation
-        active.view.isHidden = false
-        active.suppliesBars = true
-        active.view.snp.remakeConstraints { $0.edges.equalToSuperview() }
-        view.sendSubviewToBack(active.view)
         layoutPanes()
         focusChanged?()
     }
 
-    func gestureRecognizer(_ gesture: UIGestureRecognizer, shouldReceive _: UITouch) -> Bool {
-        if let other, gesture.view === other.view { focus(other) }
+    func gestureRecognizer(_ recognizer: UIGestureRecognizer, shouldReceive _: UITouch) -> Bool {
+        if let pane = navigations.first(where: { $0.viewIfLoaded === recognizer.view }) { focus(pane) }
         return false
     }
 
@@ -119,91 +108,74 @@ final class BrowserPanesController: UIViewController, UIGestureRecognizerDelegat
         layoutPanes()
     }
 
-    private func restoreList() {
-        if let list = limitedList, let page = list.superview {
-            list.snp.remakeConstraints {
-                $0.top.bottom.equalToSuperview()
-                $0.leading.trailing.equalTo(page.safeAreaLayoutGuide)
-            }
-        }
-        limitedList = nil
-        lastRects = []
-    }
-
-    private func place(_ item: UIView, in rect: CGRect) {
-        item.snp.remakeConstraints {
-            $0.left.equalToSuperview().offset(rect.minX)
-            $0.top.equalToSuperview().offset(rect.minY)
-            $0.width.equalTo(rect.width)
-            $0.height.equalTo(rect.height)
-        }
+    func syncToolbar() {
+        guard !toolbar.isHidden, let page = active.topViewController as? TabContentViewController,
+              page.usesPaneToolbar, page.toolbarItems?.isEmpty != false else { return }
+        let items = page.paneToolbarItems
+        if toolbar.items != items { toolbar.setItems(items, animated: false) }
     }
 
     func layoutPanes() {
-        guard isViewLoaded, !arranging, active.parent === self else { return }
-        if let other, other.viewIfLoaded?.superview !== view { return }
+        guard isViewLoaded, !arranging, edges[ObjectIdentifier(active)] != nil else { return }
         arranging = true
         defer { arranging = false }
         let page = active.topViewController
-        let list = (page as? FileBrowserViewController)?.collectionView ?? (page as? FileServiceBrowserViewController)?.collectionView
-        guard let other, let list, let pageView = page?.viewIfLoaded, list.superview === pageView else {
-            restoreList()
-            other?.view.isHidden = true
-            headings.forEach { $0.isHidden = true }
+        let split = second != nil && (page is FileBrowserViewController || page is FileServiceBrowserViewController)
+        if !split {
+            toolbar.isHidden = true
+            if toolbar.items != nil { toolbar.setItems(nil, animated: false) }
             divider.isHidden = true
+            for nav in navigations {
+                nav.view.isHidden = nav !== active
+                nav.usesSharedToolbar = false
+            }
+            place(active, top: 0, bottom: 0)
             return
         }
-        if limitedList !== list { restoreList(); limitedList = list }
-        region = pageView.convert(pageView.safeAreaLayoutGuide.layoutFrame, to: view).intersection(view.bounds)
-        guard !region.isNull, min(region.width, region.height) > 1 else { return }
-        let layout = PaneLayout(region: region, host: view.bounds.size, fraction: fraction)
-        horizontal = layout.horizontal
-        let index = active === first ? 0 : 1
-        let local = pageView.convert(layout.lists[index], from: view)
-        let inactive = layout.lists[1 - index]
-        let geometry = layout.headings + [local, inactive, layout.divider]
-        if lastRects != geometry {
-            lastRects = geometry
-            place(list, in: local)
-            place(other.view, in: inactive)
-            for i in headings.indices { place(headings[i], in: layout.headings[i]) }
-            place(divider, in: layout.divider)
-            divider.setAxis(horizontal: horizontal)
-            divider.accessibilityValue = Double(fraction).formatted(.percent.precision(.fractionLength(0)))
+        guard let second, edges[ObjectIdentifier(second)] != nil else { return }
+        for nav in [first, second] {
+            nav.view.isHidden = false
+            nav.usesSharedToolbar = true
         }
-        other.view.isHidden = false
-        for (i, nav) in navigations.enumerated() {
-            let heading = headings[i]
-            let title = nav.topViewController?.navigationItem.title ?? nav.topViewController?.title
-            if heading.title(for: .normal) != title { heading.setTitle(title, for: .normal) }
-            heading.isHidden = false
-            if heading.isSelected != (nav === active) { heading.isSelected = nav === active }
-            heading.tintColor = nav === active ? view.tintColor : .secondaryLabel
-        }
+        toolbar.isHidden = false
+        syncToolbar()
         divider.isHidden = false
+        let safe = view.safeAreaLayoutGuide.layoutFrame
+        let bottom = safe.maxY - toolbar.sizeThatFits(safe.size).height
+        let layout = PaneLayout(top: safe.minY, bottom: bottom, fraction: fraction)
+        available = layout.available
+        update(dividerTop, layout.dividerTop)
+        update(dividerHeight, layout.dividerHeight)
+        place(first, top: 0, bottom: layout.dividerTop - view.bounds.height)
+        place(second, top: layout.dividerTop + layout.dividerHeight, bottom: bottom - view.bounds.height)
+    }
+
+    private func place(_ navigation: TabNavigationController, top: CGFloat, bottom: CGFloat) {
+        guard let edge = edges[ObjectIdentifier(navigation)] else { return }
+        update(edge.top, top)
+        update(edge.bottom, bottom)
+    }
+
+    private func update(_ constraint: Constraint?, _ value: CGFloat) {
+        if constraint?.layoutConstraints.first?.constant != value { constraint?.update(offset: value) }
     }
 
     @objc private func resize(_ gesture: UIPanGestureRecognizer) {
-        guard gesture.state == .changed else { return }
-        let delta = gesture.translation(in: view)
+        guard gesture.state == .changed, available > 0 else { return }
+        let delta = gesture.translation(in: view).y
         gesture.setTranslation(.zero, in: view)
-        let length = horizontal ? region.width - divider.bounds.width : region.height - divider.bounds.height
-        if length > 0 { setFraction(fraction + (horizontal ? delta.x : delta.y) / length) }
+        setFraction(fraction + delta / available)
     }
 
     private func setFraction(_ value: CGFloat) {
         fraction = PaneLayout.clamped(value)
-        layoutPanes()
+        divider.accessibilityValue = Double(fraction).formatted(.percent.precision(.fractionLength(0)))
+        view.setNeedsLayout()
     }
 }
 
 private final class PaneDivider: UIView {
     var adjust: ((CGFloat) -> Void)?
-    private let grip = UIView().then {
-        $0.backgroundColor = .tertiaryLabel
-        $0.layer.cornerRadius = 2
-        $0.isUserInteractionEnabled = false
-    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -211,18 +183,20 @@ private final class PaneDivider: UIView {
         isAccessibilityElement = true
         accessibilityLabel = String(localized: "Resize Panes")
         accessibilityTraits = .adjustable
+        let grip = UIView().then {
+            $0.backgroundColor = .tertiaryLabel
+            $0.layer.cornerRadius = 2
+            $0.isUserInteractionEnabled = false
+        }
         addSubview(grip)
+        grip.snp.makeConstraints {
+            $0.center.equalToSuperview()
+            $0.size.equalTo(CGSize(width: 32, height: 4))
+        }
     }
 
     @available(*, unavailable)
     required init?(coder _: NSCoder) { fatalError("not supported") }
-
-    func setAxis(horizontal: Bool) {
-        grip.snp.remakeConstraints {
-            $0.center.equalToSuperview()
-            $0.size.equalTo(horizontal ? CGSize(width: 4, height: 32) : CGSize(width: 32, height: 4))
-        }
-    }
 
     override func accessibilityIncrement() { adjust?(0.05) }
     override func accessibilityDecrement() { adjust?(-0.05) }

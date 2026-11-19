@@ -147,7 +147,6 @@
             return [
                 UIMenu(options: .displayInline, children: [toggle]),
                 UIMenu(options: .displayInline, children: [refresh]),
-                BackendScreens.shell?.paneMenu(from: self),
                 settingsMenuElement,
             ].compactMap { $0 }
         }
