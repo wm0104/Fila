@@ -167,6 +167,7 @@ sed \
     -e "s/@INSTALLED_SIZE@/$installed_size/g" \
     -e "s/@FLAVOR@/$flavor/g" \
     "$control_template" >"$debian/control"
+python3 "$scripts/verify-deb-metadata.py" control "$debian/control" "$version"
 
 packaging_root="$(cd "$(dirname "$control_template")/.." && pwd -P)"
 for script in postinst prerm postrm; do

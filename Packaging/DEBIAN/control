@@ -2,19 +2,15 @@ Package: @PACKAGE_ID@
 Name: Fila
 Version: @VERSION@
 Architecture: @ARCHITECTURE@
-Description: Root file manager for @FLAVOR@ bootstraps
- Browse and edit every file on your device, not just the ones an app is allowed
- to see. Copy, move and rename with progress you can cancel, create and unpack
- zip, 7z, rar and tar archives, edit text with syntax highlighting, read plists,
- preview images and video, open a terminal, and share a folder to your computer
- over WebDAV. Deleted files go to a trash you can restore from, and the files
- your device needs in order to boot cannot be deleted by mistake.
+Description: 82大佬的fila文件管理器 在原来的基础上增加一些功能
 Icon: https://owngoal-dev.github.io/Fila/icon.png
 Depiction: https://owngoal-dev.github.io/Fila/
-SileoDepiction: https://owngoal-dev.github.io/Fila/depiction.json
+SileoDepiction: https://wm0104.github.io/repo/depictions/wiki.qaq.fila/depiction.json
 Maintainer: OwnGoal Studio <not-gonna-reply@owngoal.dev>
 Author: OwnGoal Studio <not-gonna-reply@owngoal.dev>
-Section: Utilities
+Section: 乌龙
+X-WM0104-Release-Date: 2026-11-19
+X-WM0104-Changelog: 0.8.4-3 | 2026-11-19 | 统一文本替换准备逻辑，保留原编码、换行和大小校验；整理DEB信息保存与打包结果协调，准确区分仅保存、打包完成和部分失败；清空废纸篓移至右上角唯一垃圾桶图标，有内容时红色可点，空或加载时灰色禁用，保留原确认及动画
 Priority: optional
 Depends: firmware (>= 15.0), uikittools, launchctl
 Installed-Size: @INSTALLED_SIZE@

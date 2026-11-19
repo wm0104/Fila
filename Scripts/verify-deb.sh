@@ -25,6 +25,7 @@ expect() {
     }
 }
 
+python3 "$(dirname "$0")/verify-deb-metadata.py" deb "$deb" "$version"
 expect "Package" "$(dpkg-deb -f "$deb" Package)" "$package_id"
 expect "Version" "$(dpkg-deb -f "$deb" Version)" "$version"
 expect "Architecture" "$(dpkg-deb -f "$deb" Architecture)" "$architecture"
