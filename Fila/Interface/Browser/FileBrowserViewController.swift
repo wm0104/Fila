@@ -372,11 +372,32 @@ final class FileBrowserViewController: BackendListViewController<FileNode>, TabC
         wantsSearchButton = true
     }
 
-    /// The ellipsis, and the clipboard beside it while something is held —
-    /// never in the trash, where nothing is pasted, nor during selection.
+    /// The ellipsis, with the trash's clear button or a folder's clipboard
+    /// beside it. Selection hides these actions together.
     private var barItems: [UIBarButtonItem] {
+        if isTrash {
+            return [moreItem(), emptyTrashItem()]
+        }
         let showsClipboard = !isEditing && !isTrash && !FileClipboard.shared.isEmpty
         return [moreItem()] + (showsClipboard ? [clipboardItem] : [])
+    }
+
+    private lazy var emptyTrashButton = UIBarButtonItem(
+        image: UIImage(systemName: "trash"),
+        primaryAction: UIAction { [weak self] _ in self?.emptyTrash() },
+    ).then {
+        $0.accessibilityLabel = String(localized: "Empty Trash")
+        $0.title = String(localized: "Empty Trash")
+        if #available(iOS 26.0, *) {
+            $0.sharesBackground = false
+            $0.identifier = "emptyTrash"
+        }
+    }
+
+    private func emptyTrashItem() -> UIBarButtonItem {
+        emptyTrashButton.isEnabled = !items.isEmpty && !isLoading
+        emptyTrashButton.tintColor = emptyTrashButton.isEnabled ? .systemRed : .tertiaryLabel
+        return emptyTrashButton
     }
 
     /// The bottom bar's Search: the search screen for this folder.
@@ -600,6 +621,9 @@ final class FileBrowserViewController: BackendListViewController<FileNode>, TabC
     /// when the list wants the next. Dropping the stream — a listing cut
     /// short, a screen gone — ends the read and closes the directory.
     override func load() -> AsyncThrowingStream<[FileNode], Error> {
+        if isTrash {
+            _ = emptyTrashItem()
+        }
         listingGeneration += 1
         return DirectoryReader.stream(in: directory, session: session)
     }
@@ -722,11 +746,10 @@ final class FileBrowserViewController: BackendListViewController<FileNode>, TabC
     override func snapshotDidApply() {
         revealPendingSelectionIfArrived()
         restoreScrollOffsetIfArrived()
-        // Every page of a long listing lands here, so outside edit mode this
-        // only refreshes the footer — rebuilding the whole toolbar per page
-        // would be work nobody sees.
+        // Every page lands here; refresh the trash's button state without
+        // rebuilding the ordinary folder's navigation items per page.
         updateFooter()
-        if isEditing {
+        if isEditing || isTrash {
             updateChrome()
         }
     }
@@ -1023,8 +1046,7 @@ final class FileBrowserViewController: BackendListViewController<FileNode>, TabC
                         image: UIImage(systemName: "tray.and.arrow.down.fill"),
                     ) { _ in TransfersViewController.presentAsSheet() },
                 ])] : []
-                let folder: UIMenuElement = isTrash ? emptyTrashAction() : newMenu()
-                done(browserMenuElements(folderAction: folder, selectAction: select) + transfers)
+                done(browserMenuElements(folderAction: isTrash ? nil : newMenu(), selectAction: select) + transfers)
             },
         ])
     }

@@ -78,20 +78,13 @@ extension FileBrowserViewController {
         )
     }
 
-    /// Takes the trash's place in the folder menu, where New would be. Not
-    /// while the listing still streams: emptying what has arrived so far
+    /// Not while the listing still streams: emptying what has arrived so far
     /// would leave the rest with a confirmation that named the wrong count.
-    func emptyTrashAction() -> UIAction {
-        UIAction(
-            title: String(localized: "Empty Trash"),
-            image: UIImage(systemName: "trash"),
-            attributes: items.isEmpty || isLoading ? [.destructive, .disabled] : .destructive,
-        ) { [weak self] _ in
-            guard let self else { return }
-            // Every entry, hidden ones included: the trash is emptied, not the
-            // view of it. The permanent-delete confirmation names the count.
-            delete(items.map(path(of:)), permanently: true)
-        }
+    func emptyTrash() {
+        guard isTrash, !items.isEmpty, !isLoading else { return }
+        // Every entry, hidden ones included: the trash is emptied, not the
+        // view of it. The permanent-delete confirmation names the count.
+        delete(items.map(path(of:)), permanently: true)
     }
 
     /// Put Back is not a job, so nothing tells this list to reload but the
@@ -121,7 +114,7 @@ extension FileBrowserViewController {
     /// Files were two-option submenus of a two-option kind: a menu that is
     /// opened for a folder should say what can be done with it in its first
     /// group, and a choice of two belongs in one switch, not a submenu.
-    func browserMenuElements(folderAction: UIMenuElement, selectAction: UIAction) -> [UIMenuElement] {
+    func browserMenuElements(folderAction: UIMenuElement?, selectAction: UIAction) -> [UIMenuElement] {
         let actions: [UIMenuElement] = [
             selectAction,
             UIAction(
@@ -162,7 +155,7 @@ extension FileBrowserViewController {
             ConfigurationBackupController.action(directory: directory, from: self),
             settingsMenuElement,
         ].compactMap { $0 }
-        return FilaMenu.groups(actions, display, [folderAction], navigation)
+        return FilaMenu.groups(actions, display, folderAction.map { [$0] } ?? [], navigation)
     }
 
     /// The layout the list is in now, named and pictured: "Show as List" while
