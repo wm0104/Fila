@@ -130,7 +130,7 @@ final class RootSplitViewController: UISplitViewController {
         UIBarButtonItem(
             image: UIImage(systemName: "sidebar.leading"),
             primaryAction: UIAction { [weak self, weak source] _ in
-                guard let self, source.map({ $0 === content.visibleTop }) != false else { return }
+                guard let self, source.map({ $0 === self.content.visibleTop }) != false else { return }
                 if isCollapsed {
                     presentSidebar()
                 } else if displayMode == .secondaryOnly {
