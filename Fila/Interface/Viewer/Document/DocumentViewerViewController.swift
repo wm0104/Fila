@@ -21,7 +21,8 @@ import WebKit
 /// workbook tabs. HTML uses the same single descriptor but starts scriptless
 /// and offline. Its optional scripts and HTTPS never apply to another viewer.
 ///
-/// When WebKit declines the type or fails to draw it, the screen says so —
+/// HTML can fall back to native static text when WebContent exits repeatedly.
+/// When WebKit declines an Office type or fails to draw it, the screen says so —
 /// see `documentViewerFailed`. It does not open the file as its bytes: a
 /// `.docx` is a ZIP, and dropping someone into its parts reads as Fila
 /// mistaking their document for an archive.
@@ -29,20 +30,9 @@ final class DocumentViewerViewController: TabContentViewController, WKNavigation
     private let handler: DocumentSchemeHandler?
     private let policy: DocumentPreviewPolicy
     private let file: DescriptorFile
-    private lazy var webView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration().then {
-        // Nothing a document does outlives the screen.
-        $0.websiteDataStore = .nonPersistent()
-        $0.defaultWebpagePreferences.allowsContentJavaScript = policy.allowsScripts
-        $0.preferences.javaScriptCanOpenWindowsAutomatically = false
-        $0.mediaTypesRequiringUserActionForPlayback = .all
-        if let handler {
-            $0.setURLSchemeHandler(handler, forURLScheme: DocumentSchemeHandler.scheme)
-        }
-    }).then {
-        // A link preview loads the link, which is the network by another door.
-        $0.allowsLinkPreview = false
-        $0.navigationDelegate = self
-    }
+    private var webView: WKWebView?
+    private var rules: WKContentRuleList?
+    private var retried = false
 
     /// Over the page until WebKit has drawn it: conversion takes a moment,
     /// and the page is blank until then.
@@ -54,9 +44,6 @@ final class DocumentViewerViewController: TabContentViewController, WKNavigation
     private enum State {
         case loading
         case shown
-        /// The content process died once after the page was shown, and the
-        /// page was loaded again. A second death gives up.
-        case reloaded
         case abandoned
     }
 
@@ -81,11 +68,7 @@ final class DocumentViewerViewController: TabContentViewController, WKNavigation
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
 
-        view.addSubview(webView)
         view.addSubview(status)
-        webView.snp.makeConstraints { make in
-            make.edges.equalToSuperview()
-        }
         status.snp.makeConstraints { make in
             make.edges.equalToSuperview()
         }
@@ -109,19 +92,50 @@ final class DocumentViewerViewController: TabContentViewController, WKNavigation
             guard let self, state == .loading else { return }
             // Fail closed: without the rules the page could reach the network.
             guard let rules else {
-                abandon("the content rules did not compile")
+                abandon("the content rules did not compile", readHTML: policy != .office)
                 return
             }
-            webView.configuration.userContentController.add(rules)
-            documentNavigation = webView.load(URLRequest(url: handler.url))
+            self.rules = rules
+            loadDocument(handler, rules: rules)
         }
+    }
+
+    /// Both attempts go through this one construction path. Install the rules
+    /// before the first request; a fresh view cannot inherit a dead process's
+    /// unfinished navigation or spend the retry on a late delegate callback.
+    private func loadDocument(_ handler: DocumentSchemeHandler, rules: WKContentRuleList) {
+        let web = WKWebView(frame: .zero, configuration: WKWebViewConfiguration().then {
+            $0.websiteDataStore = .nonPersistent()
+            $0.defaultWebpagePreferences.allowsContentJavaScript = policy.allowsScripts
+            $0.preferences.javaScriptCanOpenWindowsAutomatically = false
+            $0.mediaTypesRequiringUserActionForPlayback = .all
+            $0.setURLSchemeHandler(handler, forURLScheme: DocumentSchemeHandler.scheme)
+            $0.userContentController.add(rules)
+        }).then {
+            $0.allowsLinkPreview = false
+            $0.navigationDelegate = self
+        }
+        webView = web
+        state = .loading
+        status.isHidden = false
+        view.insertSubview(web, belowSubview: status)
+        web.snp.makeConstraints { $0.edges.equalToSuperview() }
+        documentNavigation = web.load(URLRequest(url: handler.url))
+    }
+
+    private func retireWebView() {
+        webView?.navigationDelegate = nil
+        webView?.stopLoading()
+        webView?.removeFromSuperview()
+        webView = nil
+        documentNavigation = nil
     }
 
     override func willMove(toParent parent: UIViewController?) {
         super.willMove(toParent: parent)
         if parent == nil, isViewLoaded {
             state = .abandoned
-            webView.stopLoading()
+            retireWebView()
         }
     }
 
@@ -129,25 +143,29 @@ final class DocumentViewerViewController: TabContentViewController, WKNavigation
     /// Deferred a turn: the container replaces this controller, and doing it
     /// from inside a WebKit callback or `viewDidLoad` would pull the view out
     /// from under its own caller.
-    private func abandon(_ reason: String) {
+    private func abandon(_ reason: String, readHTML: Bool = false) {
         guard state != .abandoned else { return }
         state = .abandoned
         FilaLog.info("document viewer: \(reason)")
-        webView.stopLoading()
+        retireWebView()
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            (parent as? ViewerContainerViewController)?.documentViewerFailed(from: self)
+            guard let self, let container = parent as? ViewerContainerViewController else { return }
+            if readHTML {
+                container.showStaticHTML(file: file, from: self)
+            } else {
+                container.documentViewerFailed(from: self)
+            }
         }
     }
 
     // MARK: - WKNavigationDelegate
 
     func webView(
-        _: WKWebView,
+        _ web: WKWebView,
         decidePolicyFor action: WKNavigationAction,
         decisionHandler: @escaping (WKNavigationActionPolicy) -> Void,
     ) {
-        guard let handler, let url = action.request.url else {
+        guard web === webView, let handler, let url = action.request.url else {
             decisionHandler(.cancel)
             return
         }
@@ -175,10 +193,11 @@ final class DocumentViewerViewController: TabContentViewController, WKNavigation
     }
 
     func webView(
-        _: WKWebView,
+        _ web: WKWebView,
         decidePolicyFor response: WKNavigationResponse,
         decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void,
     ) {
+        guard web === webView else { decisionHandler(.cancel); return }
         guard response.canShowMIMEType else {
             decisionHandler(.cancel)
             if response.isForMainFrame {
@@ -189,41 +208,48 @@ final class DocumentViewerViewController: TabContentViewController, WKNavigation
         decisionHandler(.allow)
     }
 
-    func webView(_: WKWebView, didFinish _: WKNavigation!) {
-        guard state == .loading || state == .reloaded else { return }
-        if state == .loading {
-            state = .shown
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard webView === self.webView, state == .loading, let navigation, navigation === documentNavigation else { return }
+        state = .shown
+        status.isHidden = true
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        failed(webView, navigation, error)
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        failed(webView, navigation, error)
+    }
+
+    private func failed(_ web: WKWebView, _ navigation: WKNavigation?, _ error: Error) {
+        guard web === webView, state == .loading, let navigation, navigation === documentNavigation else { return }
+        let failure = error as NSError
+        if failure.domain == WKError.errorDomain, failure.code == WKError.webContentProcessTerminated.rawValue {
+            webViewWebContentProcessDidTerminate(web)
+        } else {
+            abandon("the document failed to load: \(error)")
         }
-        status.removeFromSuperview()
     }
 
-    func webView(_: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        failed(navigation, error)
-    }
-
-    func webView(_: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        failed(navigation, error)
-    }
-
-    /// The document's own load failing before it was shown is the document
-    /// failing to open. Any other navigation is one the policy refused.
-    private func failed(_ navigation: WKNavigation?, _ error: Error) {
-        guard state == .loading, let navigation, navigation === documentNavigation else { return }
-        abandon("the document failed to load: \(error)")
-    }
-
-    /// The content process is gone — memory, usually. Before the page was
-    /// shown that is the document being too much for it; after, the system
-    /// reclaimed it in the background, and the page is loaded again, once.
-    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        switch state {
-        case .shown:
-            state = .reloaded
-            webView.reload()
-        case .loading, .reloaded:
-            abandon("WebKit's content process ended")
-        case .abandoned:
-            break
+    /// This callback says the process exited, not why. The identity check also
+    /// folds a navigation failure and termination for the same process into one.
+    func webViewWebContentProcessDidTerminate(_ web: WKWebView) {
+        guard web === webView, state != .abandoned, let handler, let rules else { return }
+        let phase = state == .shown ? "after display" : "before display"
+        switch policy.afterProcessExit(hadDisplayed: state == .shown, alreadyRetried: retried) {
+        case .retry:
+            FilaLog.info("document viewer: WebContent ended \(phase); retrying \(policy.rawValue) once")
+            retried = true
+            retireWebView()
+            DispatchQueue.main.async { [weak self] in
+                guard let self, state != .abandoned else { return }
+                loadDocument(handler, rules: rules)
+            }
+        case .readStaticHTML:
+            abandon("WebContent ended \(phase); switching to static HTML text", readHTML: true)
+        case .reportFailure:
+            abandon("WebContent ended \(phase)")
         }
     }
 }

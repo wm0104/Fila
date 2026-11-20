@@ -7,6 +7,15 @@ enum DocumentPreviewPolicy: String {
 
     var allowsScripts: Bool { self != .offlineHTML }
 
+    enum ProcessExitAction { case retry, readStaticHTML, reportFailure }
+
+    /// One fresh WebContent attempt per viewer, even if the first process died
+    /// before drawing a pixel. Office keeps its original post-display retry.
+    func afterProcessExit(hadDisplayed: Bool, alreadyRetried: Bool) -> ProcessExitAction {
+        if !alreadyRetried, self != .office || hadDisplayed { return .retry }
+        return self == .office ? .reportFailure : .readStaticHTML
+    }
+
     /// A response header, not a <meta> appended to someone else's markup.
     /// The HTML page has an opaque origin and no frames, forms or workers.
     var contentSecurityPolicy: String? {

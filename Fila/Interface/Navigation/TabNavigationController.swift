@@ -22,12 +22,15 @@ final class TabNavigationController: UINavigationController {
             return
         }
         content.usesPaneToolbar = usesSharedToolbar
+        configurePaneSwitch(for: content)
         guard content.bar !== bar else { return }
-        if controller is FileBrowserViewController || controller is FileServiceBrowserViewController {
-            updatePaneSwitch(isOpen: (parent as? BrowserPanesController)?.second != nil)
-            content.paneSwitchItem = paneSwitch
-        }
         content.bar = bar
+    }
+
+    private func configurePaneSwitch(for page: TabContentViewController) {
+        let canToggle = usesSharedToolbar || page is FileBrowserViewController || page is FileServiceBrowserViewController
+        let item = canToggle ? paneSwitch : nil
+        if page.paneSwitchItem !== item { page.paneSwitchItem = item }
     }
 
     private lazy var paneSwitch: UIBarButtonItem = {
@@ -35,6 +38,9 @@ final class TabNavigationController: UINavigationController {
             guard let self, let page = topViewController else { return }
             owner?.content.togglePanes(from: page)
         })
+        let title = String(localized: "Open Dual Pane")
+        item.title = title
+        item.accessibilityLabel = title
         item.accessibilityIdentifier = "fila.panes"
         if #available(iOS 26.0, *) { item.sharesBackground = false }
         return item
@@ -52,6 +58,7 @@ final class TabNavigationController: UINavigationController {
         didSet {
             guard usesSharedToolbar != oldValue else { return }
             for case let page as TabContentViewController in viewControllers {
+                configurePaneSwitch(for: page)
                 page.usesPaneToolbar = usesSharedToolbar
             }
             setToolbarHidden(topViewController?.toolbarItems?.isEmpty != false, animated: false)

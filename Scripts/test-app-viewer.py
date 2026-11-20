@@ -4,6 +4,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import sys
 
 repo = Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(prefix='fila-viewer-tests-') as directory:
@@ -13,7 +14,7 @@ with tempfile.TemporaryDirectory(prefix='fila-viewer-tests-') as directory:
     for name in ['Text/TextSearch.swift', 'Text/TextEncoding.swift', 'Text/TextReplacement.swift', 'Shared/AtomicSaveOperation.swift']:
         shutil.copy2(repo / 'Fila/Interface/Viewer' / name, sources / Path(name).name)
     for path in ['Fila/Interface/Tabs/PaneLayout.swift', 'Fila/Interface/Viewer/Document/DocumentPreviewPolicy.swift',
-                 'Tests/Viewer/PaneAndHTMLTests.swift']:
+                 'Fila/Interface/Viewer/Document/HTMLReadableText.swift', 'Tests/Viewer/PaneAndHTMLTests.swift']:
         shutil.copy2(repo / path, sources / Path(path).name)
     shutil.copy2(repo / 'Tests/Viewer/ViewerTextTests.swift', sources / 'ViewerTextTests.swift')
     shutil.copy2(repo / 'Tests/Viewer/TextReplacementTests.swift', sources / 'TextReplacementTests.swift')
@@ -26,4 +27,11 @@ let package = Package(
     targets: [.testTarget(name: "FilaViewerTests", swiftSettings: [.swiftLanguageMode(.v5)])]
 )
 ''')
-    subprocess.run(['swift', 'test', '--package-path', str(package)], check=True, timeout=600)
+    command = ['swift', 'test', '--package-path', str(package)]
+    if sys.platform.startswith('linux'):
+        # Apple SDKs ship this module map; on Linux use the host's libxml2-dev.
+        (package / 'xml.h').write_text('#include <libxml/HTMLparser.h>\n')
+        module = package / 'libxml.modulemap'
+        module.write_text('module libxml2 [system] { link "xml2" module HTMLparser { header "xml.h" export * } }\n')
+        command += ['-Xcc', f'-fmodule-map-file={module}', '-Xcc', '-I/usr/include/libxml2']
+    subprocess.run(command + sys.argv[1:], check=True, timeout=600)

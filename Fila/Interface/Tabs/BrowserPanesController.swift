@@ -3,8 +3,8 @@ import SnapKit
 import Then
 import UIKit
 
-/// Two real navigation stacks, each with its own top bar. Only the active
-/// folder supplies items for the single bottom toolbar. A viewer stays full screen.
+/// A push or pop stays inside its own pane. The active page supplies the
+/// items for the one bottom toolbar; only an explicit close removes a pane.
 final class BrowserPanesController: UIViewController, UIGestureRecognizerDelegate {
     private(set) var first: TabNavigationController
     private(set) var second: TabNavigationController?
@@ -119,24 +119,16 @@ final class BrowserPanesController: UIViewController, UIGestureRecognizerDelegat
         guard isViewLoaded, !arranging, edges[ObjectIdentifier(active)] != nil else { return }
         arranging = true
         defer { arranging = false }
-        let page = active.topViewController
-        let split = second != nil && (page is FileBrowserViewController || page is FileServiceBrowserViewController)
-        if !split {
+        guard let second else {
             toolbar.isHidden = true
             if toolbar.items != nil { toolbar.setItems(nil, animated: false) }
             divider.isHidden = true
-            for nav in navigations {
-                nav.view.isHidden = nav !== active
-                nav.usesSharedToolbar = false
-            }
-            place(active, top: 0, bottom: 0)
+            first.usesSharedToolbar = false
+            place(first, top: 0, bottom: 0)
             return
         }
-        guard let second, edges[ObjectIdentifier(second)] != nil else { return }
-        for nav in [first, second] {
-            nav.view.isHidden = false
-            nav.usesSharedToolbar = true
-        }
+        guard edges[ObjectIdentifier(second)] != nil else { return }
+        for nav in [first, second] { nav.usesSharedToolbar = true }
         toolbar.isHidden = false
         syncToolbar()
         divider.isHidden = false

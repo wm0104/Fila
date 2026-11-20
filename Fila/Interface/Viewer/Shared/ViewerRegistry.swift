@@ -250,7 +250,7 @@ final class ViewerContainerViewController: TabContentViewController {
         trailingNavigationItems = ((child as? TabContentViewController)?.trailingNavigationItems ?? []) + [menuItem]
         navigationItem.hidesBackButton = item?.hidesBackButton ?? false
         let leadingItems = item?.leftBarButtonItems ?? []
-        if let shell, shell.content.visibleTop === self {
+        if let shell, shell.content.visiblePages.contains(where: { $0 === self }) {
             // Compose the child's exit and shell controls in one assignment.
             // Clearing first would remove the prepared Back during viewWillAppear.
             shell.configureSidebarButton(for: self, leadingItems: leadingItems)
@@ -343,6 +343,16 @@ final class ViewerContainerViewController: TabContentViewController {
     func setHTMLPolicy(_ policy: DocumentPreviewPolicy, file: DescriptorFile, from viewer: DocumentViewerViewController) {
         guard child === viewer, detectedFormat == .html, menuItem.isEnabled else { return }
         embed(DocumentViewerViewController(details: details, file: file, policy: policy))
+        refreshBarItems()
+    }
+
+    func showStaticHTML(file: DescriptorFile, from viewer: DocumentViewerViewController) {
+        guard child === viewer, detectedFormat == .html, menuItem.isEnabled else { return }
+        childMenuElements = []
+        embed(HTMLReaderViewController(file: file))
+        // The static reader isn't the HTML renderer. Open As › HTML retries it;
+        // Text still opens the source, rather than the extracted body.
+        detectedFormat = nil
         refreshBarItems()
     }
 

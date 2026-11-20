@@ -54,7 +54,7 @@
             didSet { applyToolbar(animated: false) }
         }
 
-        /// Supplied by the tab only for a directory page, immediately before Tabs.
+        /// Opens a second directory or, on any split page, closes the other pane.
         public var paneSwitchItem: UIBarButtonItem? {
             didSet { applyToolbar(animated: false) }
         }
