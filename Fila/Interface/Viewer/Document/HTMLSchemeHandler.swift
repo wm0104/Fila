@@ -123,18 +123,18 @@ final class HTMLSchemeHandler: NSObject, WKURLSchemeHandler {
                 DispatchQueue.main.async {
                     defer { slots.signal() }
                     let key = ObjectIdentifier(task)
-                    guard let self, !load.isStopped, loads[key] === load else { return }
+                    guard let self, !load.isStopped, self.loads[key] === load else { return }
                     switch result {
                     case let .success(bytes):
                         if !bytes.isEmpty { task.didReceive(bytes) }
                         // A receive callback may synchronously stop this task.
-                        guard !load.isStopped, loads[key] === load else { return }
+                        guard !load.isStopped, self.loads[key] === load else { return }
                         if last {
-                            loads.removeValue(forKey: key)
+                            self.loads.removeValue(forKey: key)
                             load.stop()
                             task.didFinish()
                         }
-                    case let .failure(error): fail(task, load: load, error: error)
+                    case let .failure(error): self.fail(task, load: load, error: error)
                     }
                 }
                 if last { return }
