@@ -14,11 +14,23 @@ class ViewerToolbarTests(unittest.TestCase):
         close = container.split('func confirmClosingTab(', 1)[1].split('private func showConnecting()', 1)[0]
         self.assertLess(close.index('!navigation.refusesRemoving(navigation.viewControllers)'), close.index('viewer?.confirmReplacement'))
 
-    def test_open_as_html_is_available_once_immediately_after_text(self):
+    def test_open_as_has_no_html_preview(self):
         choices = VIEWER.split('var choices: [FileFormat] = ', 1)[1].split('let openAs =', 1)[0]
-        self.assertRegex(choices, r'^\[\.text\]\s+if FileFormat\.detect\(name: fileName\) == \.html \{ choices\.append\(\.html\) \}')
-        self.assertEqual(choices.count('append(.html)'), 1)
-        self.assertIn('case .html: "HTML"', VIEWER)
+        self.assertTrue(choices.startswith('[.text,'))
+        self.assertNotIn('.html', choices)
+        self.assertNotIn('case .html:', VIEWER)
+        self.assertNotIn('setHTMLPolicy', VIEWER)
+        self.assertNotIn('showStaticHTML', VIEWER)
+
+    def test_html_extensions_use_source_editor(self):
+        formats = (ROOT / 'Packages/FilaKit/Sources/FilaFormats/FileFormat.swift').read_text()
+        self.assertIn('case "html", "htm", "xhtml": return .text', formats)
+        self.assertIn('case .text:\n            TextViewerViewController', VIEWER)
+
+    def test_html_preview_only_sources_are_removed(self):
+        for name in ['DocumentPreviewPolicy.swift', 'HTMLReadableText.swift', 'HTMLReaderViewController.swift']:
+            with self.subTest(name=name):
+                self.assertFalse((ROOT / 'Fila/Interface/Viewer/Document' / name).exists())
 
 
 if __name__ == '__main__':
