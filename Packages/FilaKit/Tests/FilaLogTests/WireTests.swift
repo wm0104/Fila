@@ -143,6 +143,10 @@
             // A log is only greppable if the words are fixed. These are on screen
             // and in files people paste into issues.
             #expect(FilaOperation.fetchLog.rawValue == 16)
+            #expect(FilaOperation.removeNode.rawValue == 21)
+            #expect(FilaOperation.openPreviewResource.rawValue == 22)
+            #expect(FilaOperation.openPreviewDirectory.rawValue == 23)
+            #expect(Set(FilaOperation.allCases.map(\.rawValue)).count == FilaOperation.allCases.count)
             #expect(FilaOperation.allCases.allSatisfy { !$0.name.isEmpty })
             #expect(Set(FilaOperation.allCases.map(\.name)).count == FilaOperation.allCases.count)
             #expect(FilaReplyCode.protectedPath.name == "guard")

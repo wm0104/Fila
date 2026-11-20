@@ -204,6 +204,14 @@ public enum FilaOperation: UInt64, Sendable, CaseIterable {
     /// verified entry at a time, in place of a recursive delete that would
     /// take whatever appeared meanwhile.
     case removeNode = 21
+
+    /// Read-only regular file under a supplied directory descriptor. No bytes,
+    /// arbitrary flags, paths outside that root or persistent daemon state.
+    case openPreviewResource = 22
+
+    /// Pin an already canonical absolute directory without resolving aliases.
+    /// Returns a directory FD only; no flags, bytes or registry are accepted.
+    case openPreviewDirectory = 23
 }
 
 public extension FilaOperation {
@@ -216,6 +224,8 @@ public extension FilaOperation {
         case .closeDirectory: "closeDirectory"
         case .statPath: "stat"
         case .openPath: "open"
+        case .openPreviewResource: "openPreviewResource"
+        case .openPreviewDirectory: "openPreviewDirectory"
         case .createNode: "create"
         case .rename: "rename"
         case .setAttributes: "setattr"

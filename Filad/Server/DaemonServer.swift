@@ -257,6 +257,22 @@ final class DaemonServer: @unchecked Sendable {
             defer { close(descriptor) }
             xpc_dictionary_set_fd(reply, FilaWireKey.descriptor, descriptor)
 
+        case .openPreviewDirectory:
+            let descriptor = try operations.openPreviewDirectory(string(FilaWireKey.path, in: message))
+            defer { close(descriptor) }
+            xpc_dictionary_set_fd(reply, FilaWireKey.descriptor, descriptor)
+
+        case .openPreviewResource:
+            let root = xpc_dictionary_dup_fd(message, FilaWireKey.descriptor)
+            guard root >= 0 else { throw FilaFailure(code: .invalidRequest) }
+            defer { close(root) }
+            let resource = try operations.openPreviewResource(
+                root: root, relativePath: string(FilaWireKey.path, in: message),
+            )
+            defer { close(resource.descriptor) }
+            xpc_dictionary_set_fd(reply, FilaWireKey.descriptor, resource.descriptor)
+            xpc_dictionary_set_value(reply, FilaWireKey.details, resource.details.encoded())
+
         case .createNode:
             guard let template = NodeTemplate(decoding: message) else {
                 throw FilaFailure(code: .invalidRequest)

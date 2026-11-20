@@ -60,10 +60,31 @@ the independent IPA project owns `ipa-dev`.
 
 ### DEB HTML handling
 
-HTML, HTM and XHTML open as source text in the ordinary text editor. This branch
-has no HTML web preview, script/HTTPS preview toggle or extracted-body fallback.
-Keep HTML/XML syntax highlighting, WebUI resources and the Office/iWork/RTF
-converter; those are not HTML preview features.
+HTML and HTM open in a real, app-side WebKit preview, with Open As > Text kept.
+XHTML still opens as source text. The fixed authorization root is the original
+document's directory, held as a descriptor: local HTML navigation and relative
+CSS/images/scripts must stay beneath it without following symlinks. Capture the
+root with `openPreviewDirectory` before sniffing the initial document and serve
+that same document FD to WebKit. Neither this capture nor a relative resource
+open may resolve a new symlink. `openPreviewResource` returns a read-only FD and
+FD-derived metadata, never file bytes. Internal pages update the current file's
+menu target without moving the original root; unknown encodings stay unforced.
+JavaScript and HTTPS access start disabled for each preview session; the existing
+ellipsis menu may enable them for that session only. Native peer connections
+remain disabled in each HTML configuration, even with HTTPS/JavaScript enabled;
+a missing or mismatched RTC preference API or failed readback refuses rendering
+and keeps Text available. Do not substitute deletion of JavaScript globals.
+New-window requests are refused without creating a default WKWebView. Explicit
+HTTPS links require the standard Fila confirmation card, then open a system
+SFSafariViewController inside Fila, not an initial handoff to a browser app.
+Only the HTTPS URL is passed: no local root FD or preview permissions. Safari's
+subsequent browsing and user actions follow the system component's own policy;
+do not promise global suppression of app handoffs. No custom app URLs, downloads
+or execution are permitted by the HTML preview. Failures use the shared status
+UI, explicit Retry and Open As > Text, never extracted-body fallback or automatic
+retry loops. Keep Office/iWork/RTF conversion's own script policy,
+HTML/XML editor highlighting and WebUI resources unchanged. No new dependencies.
+See `Documentation/HTML-Preview.md` for the accepted scope and validation limits.
 
 ### DEB trash scope
 

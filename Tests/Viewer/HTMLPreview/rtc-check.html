@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RTC preference acceptance fixture</title>
+<body>
+<h1>RTC remains disabled</h1>
+<p>Enable JavaScript in the HTML Preview menu to run these checks. Repeat with HTTPS both off and on. This page only checks constructor exposure; it never creates a peer connection or sends ICE traffic.</p>
+<p>PASS rows alone are not a network-capture result. A blocked or missing frame is not a passing RTC exposure check.</p>
+<p><a href="index.html" target="_blank">New-window link: must open nothing</a></p>
+<button id="popup">window.open: must open nothing</button>
+<ul id="results"><li>JavaScript is disabled, or the fixture has not run.</li></ul>
+<div id="frames"></div>
+<script>
+(() => {
+    const tag = 'fila-rtc-fixture';
+    function probe(label) {
+        const names = ['RTCPeerConnection', 'webkitRTCPeerConnection'];
+        const exposed = names.filter(name => typeof window[name] !== 'undefined');
+        return {tag: 'fila-rtc-fixture', label, result: exposed.length ? 'FAIL: exposed ' + exposed.join(', ') : 'PASS: RTC constructors absent'};
+    }
+    const child = new URLSearchParams(location.search).get('child');
+    if (child) {
+        const result = probe(child);
+        document.body.textContent = result.result;
+        parent.postMessage(result, '*');
+        return;
+    }
+    const results = document.getElementById('results');
+    results.textContent = '';
+    function row(text) {
+        const item = document.createElement('li');
+        item.textContent = text;
+        results.appendChild(item);
+        return item;
+    }
+    row('main: ' + probe('main').result);
+    const rows = new Map();
+    window.addEventListener('message', event => {
+        const entry = rows.get(event.source);
+        if (entry && event.data && event.data.tag === tag && event.data.label === entry.label) {
+            entry.item.textContent = entry.label + ': ' + event.data.result;
+        }
+    });
+    function addFrame(label, configure) {
+        const frame = document.createElement('iframe');
+        frame.title = label + ' RTC check';
+        const item = row(label + ': PENDING / blocked / not loaded (not PASS)');
+        configure(frame);
+        document.getElementById('frames').appendChild(frame);
+        rows.set(frame.contentWindow, {label, item});
+    }
+    function childPage(label) {
+        return '<!doctype html><meta charset="utf-8"><body><script>'
+            + probe.toString() + ';parent.postMessage(probe(' + JSON.stringify(label) + '), "*");'
+            + '<\/script></body>';
+    }
+    addFrame('local iframe', frame => { frame.src = 'rtc-check.html?child=' + encodeURIComponent('local iframe'); });
+    addFrame('srcdoc', frame => { frame.srcdoc = childPage('srcdoc'); });
+    addFrame('data', frame => { frame.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(childPage('data')); });
+    const blobURL = URL.createObjectURL(new Blob([childPage('blob')], {type: 'text/html'}));
+    addFrame('blob', frame => { frame.src = blobURL; });
+    window.addEventListener('pagehide', () => URL.revokeObjectURL(blobURL), {once: true});
+    document.getElementById('popup').onclick = () => {
+        window.open('index.html', '_blank');
+        row('window.open requested: verify no window/tab was created; the return value is not proof.');
+    };
+})();
+</script>
+</body></html>

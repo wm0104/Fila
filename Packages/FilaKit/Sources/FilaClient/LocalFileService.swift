@@ -194,6 +194,18 @@ public final class LocalFileService: LocalFileAccess, @unchecked Sendable {
         try await run("open \(path)") { try self.operations.open(path, flags: flags, mode: mode) }
     }
 
+    public func openPreviewDirectory(_ canonicalPath: String) async throws -> Int32 {
+        try await run("openPreviewDirectory") {
+            try self.operations.openPreviewDirectory(canonicalPath)
+        }
+    }
+
+    public func openPreviewResource(root: Int32, relativePath: String) async throws -> (descriptor: Int32, details: FileDetails) {
+        try await run("openPreviewResource") {
+            try self.operations.openPreviewResource(root: root, relativePath: relativePath)
+        }
+    }
+
     public func create(_ template: NodeTemplate, at path: String, mode: mode_t?) async throws {
         try await run("create \(path)") { try self.operations.create(template, at: path, mode: mode) }
     }

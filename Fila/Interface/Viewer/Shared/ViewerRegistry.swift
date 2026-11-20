@@ -42,31 +42,35 @@ enum ViewerRegistry {
         file: DescriptorFile,
         link: any LocalFileAccess,
         gallery: ImageGallery?,
-    ) -> UIViewController {
+        htmlSource: HTMLPreviewSource?,
+    ) throws -> UIViewController {
         switch format {
         case .propertyList:
-            PropertyListEditorViewController(details: details, file: file, link: link)
+            return PropertyListEditorViewController(details: details, file: file, link: link)
         case .machO:
-            MachOInspectorViewController(details: details, file: file, link: link)
+            return MachOInspectorViewController(details: details, file: file, link: link)
         case .archive:
-            ArchiveBrowserViewController(details: details, file: file, link: link)
+            return ArchiveBrowserViewController(details: details, file: file, link: link)
         case .image:
-            ImageViewerViewController(details: details, file: file, gallery: gallery)
+            return ImageViewerViewController(details: details, file: file, gallery: gallery)
         case .audio:
-            MediaPlayerViewController(details: details, file: file, isAudio: true)
+            return MediaPlayerViewController(details: details, file: file, isAudio: true)
         case .video:
-            MediaPlayerViewController(details: details, file: file, isAudio: false)
+            return MediaPlayerViewController(details: details, file: file, isAudio: false)
         case .pdf:
-            PDFViewerViewController(details: details, file: file)
+            return PDFViewerViewController(details: details, file: file)
         case .document:
-            DocumentViewerViewController(details: details, file: file)
+            return DocumentViewerViewController(details: details, file: file)
+        case .html:
+            guard let htmlSource else { throw ViewerFailure.readFailed(EINVAL) }
+            return HTMLPreviewViewController(source: htmlSource)
         case .text:
-            TextViewerViewController(details: details, file: file, link: link)
+            return TextViewerViewController(details: details, file: file, link: link)
         // A SQLite browser is a viewer several times the size of the others and
         // is deliberately deferred; until it exists the file is bytes, and bytes
         // have a viewer.
         case .sqlite, .binary:
-            HexViewerViewController(details: details, file: file)
+            return HexViewerViewController(details: details, file: file)
         }
     }
 }
@@ -100,6 +104,11 @@ final class ViewerContainerViewController: TabContentViewController {
     ))
     private var child: UIViewController?
     private var detectedFormat: FileFormat?
+    /// Only HTML navigation carries this capability forward. Its relative name
+    /// changes, but its original directory never does. While a page is opening,
+    /// hide file actions rather than leaving them aimed at the previous page.
+    private var htmlTarget: (directory: HTMLPreviewDirectory, relativePath: String)?
+    private var htmlTargetReady = true
     /// What the bytes alone say, without the name — the archive browser for a
     /// ZIP, hex for an OLE compound file, text for RTF. A document opens in
     /// it when it is empty or too large; one WebKit declines does not.
@@ -146,7 +155,19 @@ final class ViewerContainerViewController: TabContentViewController {
     fileprivate func prepare() async {
         loadViewIfNeeded()
         do {
-            let file = try await DescriptorFile.open(details.path, link: link)
+            let source: HTMLPreviewSource?
+            let file: DescriptorFile
+            if ["html", "htm"].contains((fileName as NSString).pathExtension.lowercased()) {
+                // Capture before sniffing: ordinary open canonicalizes again and
+                // could follow an ancestor swapped to a link after the listing.
+                let captured = try await HTMLPreviewSource.capture(path: details.path, link: link)
+                source = captured
+                file = captured.document.file
+                details = captured.document.details
+            } else {
+                source = nil
+                file = try await DescriptorFile.open(details.path, link: link)
+            }
             let head = try file.read(at: 0, count: FileFormat.detectionByteCount)
             var format = FileFormat.detect(head: head, name: fileName)
             contentFormat = FileFormat.detect(head: head, name: "")
@@ -162,10 +183,18 @@ final class ViewerContainerViewController: TabContentViewController {
             // be wrong on a jailbroken filesystem. The line says which guess it
             // made, which is the difference between "the editor is broken" and
             // "that plist is not a plist".
-            FilaLog.info("open \(details.path) as \(format) (\(details.node.size) bytes)")
-            try present(format: format, file: file)
+            if format == .html {
+                FilaLog.info("open HTML preview (\(details.node.size) bytes)")
+            } else {
+                FilaLog.info("open \(details.path) as \(format) (\(details.node.size) bytes)")
+            }
+            try present(format: format, file: file, htmlSource: format == .html ? source : nil)
         } catch {
-            FilaLog.warning("open \(details.path) failed: \(Self.describe(error))")
+            if ["html", "htm"].contains((fileName as NSString).pathExtension.lowercased()) {
+                FilaLog.warning("open HTML preview failed")
+            } else {
+                FilaLog.warning("open \(details.path) failed: \(Self.describe(error))")
+            }
             present(failure: error)
         }
     }
@@ -175,14 +204,27 @@ final class ViewerContainerViewController: TabContentViewController {
         (error as? FilaFailure).map { FilaLog.describe($0) } ?? "\(error)"
     }
 
-    private func present(format: FileFormat, file: DescriptorFile) throws {
-        try PreviewLimits.validate(byteCount: file.byteCount, format: format)
+    private func present(format: FileFormat, file: DescriptorFile, htmlSource: HTMLPreviewSource? = nil) throws {
+        // HTML applies the same budget in its resource handler so failures keep
+        // that viewer's explicit Retry/Text choices instead of a generic page.
+        if format != .html {
+            try PreviewLimits.validate(byteCount: file.byteCount, format: format)
+        }
+        let controller = try ViewerRegistry.viewer(
+            for: format, details: details, file: file, link: link, gallery: gallery, htmlSource: htmlSource,
+        )
         detectedFormat = format
+        if format == .html, let htmlSource {
+            htmlTarget = (htmlSource.directory, htmlSource.document.relativePath)
+        } else {
+            htmlTarget = nil
+        }
+        htmlTargetReady = true
         // Cleared before the child loads, because the child sets it while its
         // view is being made and clearing afterwards would wipe it.
         childMenuElements = []
         confirmReplacement = nil
-        embed(ViewerRegistry.viewer(for: format, details: details, file: file, link: link, gallery: gallery))
+        embed(controller)
         refreshBarItems()
         menuItem.isEnabled = true
     }
@@ -193,7 +235,12 @@ final class ViewerContainerViewController: TabContentViewController {
         // "(FilaProtocol.FilaFailure error 1.)" — filling the screen with the
         // one message a user can neither read nor act on.
         let message = FailureMessage.text(for: failure)
-        if canChangePermissions(after: failure) {
+        if ["html", "htm"].contains((fileName as NSString).pathExtension.lowercased()) {
+            present(failurePage: ViewerFailureViewController(
+                message: message,
+                button: String(localized: "Retry"),
+            ) { [weak self] in self?.reopen(as: .html) })
+        } else if canChangePermissions(after: failure) {
             present(failurePage: ViewerFailureViewController(
                 message: message + "\n\n"
                     + String(localized: "Change the file's permissions in Properties, then open it again."),
@@ -260,6 +307,9 @@ final class ViewerContainerViewController: TabContentViewController {
         navigationController?.isModalInPresentation = isModalInPresentation
 
         var choices: [FileFormat] = [.text, .binary, .propertyList, .machO, .archive, .image]
+        if ["html", "htm"].contains((fileName as NSString).pathExtension.lowercased()) {
+            choices.append(.html)
+        }
         // Only a name WebKit has a type for: the way back to the page after
         // opening a `.docx` as an archive, or after it fell back to one.
         if FileFormat.documentMIMEType(name: fileName) != nil {
@@ -303,6 +353,7 @@ final class ViewerContainerViewController: TabContentViewController {
     /// Nested editors and virtual archive directories use their real file's
     /// container; a staged archive member must never borrow another file.
     func fileMenuElements(presenting presenter: UIViewController, additional: [UIMenuElement] = []) -> [UIMenuElement] {
+        guard detectedFormat != .html || htmlTargetReady else { return additional }
         let directory = URL(fileURLWithPath: details.path).deletingLastPathComponent().path
         let actions = FileActions(presenter: presenter, directory: directory) { [weak self, weak presenter] in
             guard let self, let presenter, let navigation = navigationController,
@@ -352,6 +403,32 @@ final class ViewerContainerViewController: TabContentViewController {
         ))
     }
 
+    /// Move only the relative target, never the authorization directory. The
+    /// previous page's properties/rename/share menu is unavailable until the
+    /// new descriptor's own metadata arrives, including on an open failure.
+    func htmlPreviewWillOpen(_ relativePath: String, from viewer: UIViewController) {
+        guard child === viewer, detectedFormat == .html, let target = htmlTarget else { return }
+        htmlTarget = (target.directory, relativePath)
+        htmlTargetReady = false
+        refreshBarItems()
+    }
+
+    func htmlPreviewOpened(_ document: HTMLPreviewDocument, from viewer: UIViewController) {
+        guard child === viewer, detectedFormat == .html,
+              htmlTarget?.relativePath == document.relativePath else { return }
+        details = document.details
+        htmlTargetReady = true
+        title = document.details.node.name
+        decorationSource = LocalPathDecoration(path: details.path, icon: FilePresentation.image(for: details.node))
+        refreshBarItems()
+    }
+
+    /// HTML's explicit escape hatch uses the same replacement/save boundary.
+    func openHTMLAsText(from viewer: UIViewController) {
+        guard child === viewer, detectedFormat == .html else { return }
+        reopen(as: .text)
+    }
+
     /// Whether the open was refused for the file's mode or flags, and
     /// Properties could change them: the daemon changes anything as root,
     /// and without it the app changes only what its own user owns. Not the
@@ -393,6 +470,7 @@ final class ViewerContainerViewController: TabContentViewController {
         menuItem.isEnabled = false
         let details = details
         let link = link
+        let target = htmlTarget
         Task { [weak self] in
             defer {
                 self?.view.isUserInteractionEnabled = true
@@ -401,8 +479,26 @@ final class ViewerContainerViewController: TabContentViewController {
                 }
             }
             do {
-                let file = try await DescriptorFile.open(details.path, link: link)
-                try self?.present(format: format, file: file)
+                let source: HTMLPreviewSource?
+                let file: DescriptorFile
+                if let target {
+                    // Open As (especially Text after a failed navigation) must
+                    // address the requested current page, not the initial file
+                    // or a newly enlarged authorization directory.
+                    let document = try await target.directory.open(target.relativePath)
+                    source = HTMLPreviewSource(directory: target.directory, document: document)
+                    file = document.file
+                } else if format == .html {
+                    let captured = try await HTMLPreviewSource.capture(path: details.path, link: link)
+                    source = captured
+                    file = captured.document.file
+                } else {
+                    source = nil
+                    file = try await DescriptorFile.open(details.path, link: link)
+                }
+                guard let self else { return }
+                if let source { self.details = source.document.details }
+                try present(format: format, file: file, htmlSource: format == .html ? source : nil)
             } catch {
                 self?.presentMessage(String(localized: "Unable to Open This File"), message: FailureMessage.text(for: error))
             }
@@ -419,6 +515,7 @@ final class ViewerContainerViewController: TabContentViewController {
         case .video: String(localized: "Video")
         case .pdf: String(localized: "PDF")
         case .document: String(localized: "Document")
+        case .html: String(localized: "HTML Preview")
         case .sqlite: String(localized: "Database")
         case .text: String(localized: "Text")
         case .binary: String(localized: "Hex")

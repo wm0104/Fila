@@ -40,14 +40,20 @@ struct FileFormatTests {
         #expect(FileFormat.detect(head: Data([0x68, 0x00, 0x69]), name: "unnamed") == .binary)
     }
 
-    @Test(arguments: ["index.html", "page.HTM", "notes.xhtml"])
-    func `HTML opens as source text without overriding a binary signature`(name: String) {
-        #expect(FileFormat.detect(name: name) == .text)
-        #expect(FileFormat.detect(head: Data("<p>Hello</p>".utf8), name: name) == .text)
-        #expect(FileFormat.detect(head: Data(), name: name) == .text)
+    @Test(arguments: ["index.html", "page.HTM"])
+    func `HTML selects real preview without overriding binary signatures`(name: String) {
+        #expect(FileFormat.detect(name: name) == .html)
+        #expect(FileFormat.detect(head: Data("<p>你好</p>".utf8), name: name) == .html)
+        #expect(FileFormat.detect(head: Data(), name: name) == .html)
         #expect(FileFormat.documentMIMEType(name: name) == nil)
         #expect(FileFormat.detect(head: Data("%PDF-1.7".utf8), name: name) == .pdf)
         #expect(FileFormat.detect(head: Data("<p>Hello</p>".utf8), name: "notes.txt") == .text)
+    }
+
+    @Test
+    func `XHTML remains source text`() {
+        #expect(FileFormat.detect(name: "notes.xhtml") == .text)
+        #expect(FileFormat.detect(head: Data("<html/>".utf8), name: "notes.XHTML") == .text)
     }
 
     @Test(arguments: ["main.caml", "document.xml", "unnamed", "module.dylib"])

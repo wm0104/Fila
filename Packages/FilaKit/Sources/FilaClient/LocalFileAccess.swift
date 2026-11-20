@@ -214,6 +214,14 @@ public protocol LocalFileAccess: AnyObject, Sendable {
     /// runs a browsing session out of them.
     func open(_ path: String, flags: Int32, mode: mode_t) async throws -> Int32
 
+    /// Capture an already canonical absolute directory without resolving a
+    /// symlink again. The caller owns the returned directory descriptor.
+    func openPreviewDirectory(_ canonicalPath: String) async throws -> Int32
+
+    /// Borrow `root` until the call returns; receive an owned read-only regular
+    /// descriptor and metadata for that same inode. Neither open follows links.
+    func openPreviewResource(root: Int32, relativePath: String) async throws -> (descriptor: Int32, details: FileDetails)
+
     func create(_ template: NodeTemplate, at path: String, mode: mode_t?) async throws
 
     /// Move or rename one node.
@@ -277,6 +285,15 @@ public protocol LocalFileAccess: AnyObject, Sendable {
 /// call sites — `session.perform { try await $0.list(directory: p) }` — read
 /// as they did.
 public extension LocalFileAccess {
+    /// Older/test backends fail closed rather than falling back to open(path).
+    func openPreviewDirectory(_ canonicalPath: String) async throws -> Int32 {
+        throw FilaFailure(code: .invalidRequest, systemError: ENOTSUP)
+    }
+
+    func openPreviewResource(root: Int32, relativePath: String) async throws -> (descriptor: Int32, details: FileDetails) {
+        throw FilaFailure(code: .invalidRequest, systemError: ENOTSUP)
+    }
+
     func list(directory: String) async throws -> DirectoryPage {
         try await list(directory: directory, cursor: 0)
     }

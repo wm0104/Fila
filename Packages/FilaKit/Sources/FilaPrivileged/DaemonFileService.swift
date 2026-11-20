@@ -108,6 +108,29 @@ final class DaemonFileService: LocalFileAccess, @unchecked Sendable {
         return descriptor
     }
 
+    func openPreviewDirectory(_ canonicalPath: String) async throws -> Int32 {
+        let path = try PreviewRequestPath(canonicalPath)
+        let reply = try await send(.openPreviewDirectory, fill: path.encode)
+        let descriptor = xpc_dictionary_dup_fd(reply, FilaWireKey.descriptor)
+        guard descriptor >= 0 else { throw FilaFailure(code: .operationFailed) }
+        return descriptor
+    }
+
+    func openPreviewResource(root: Int32, relativePath: String) async throws -> (descriptor: Int32, details: FileDetails) {
+        let path = try PreviewRequestPath(relativePath)
+        // set_fd duplicates the borrowed capability into the outgoing message.
+        let reply = try await send(.openPreviewResource) { request in
+            xpc_dictionary_set_fd(request, FilaWireKey.descriptor, root)
+            path.encode(into: request)
+        }
+        // Decode before duplicating: a malformed reply must not leak an FD.
+        guard let value = xpc_dictionary_get_value(reply, FilaWireKey.details),
+              let details = FileDetails(decoding: value) else { throw FilaFailure(code: .operationFailed) }
+        let descriptor = xpc_dictionary_dup_fd(reply, FilaWireKey.descriptor)
+        guard descriptor >= 0 else { throw FilaFailure(code: .operationFailed) }
+        return (descriptor, details)
+    }
+
     func create(_ template: NodeTemplate, at path: String, mode: mode_t?) async throws {
         _ = try await send(.createNode) { request in
             xpc_dictionary_set_string(request, FilaWireKey.path, path)

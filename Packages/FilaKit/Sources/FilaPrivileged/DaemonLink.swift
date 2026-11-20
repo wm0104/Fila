@@ -233,6 +233,14 @@ public final class DaemonLink: PrivilegedFileAccess, @unchecked Sendable {
         try await service().open(path, flags: flags, mode: mode)
     }
 
+    public func openPreviewDirectory(_ canonicalPath: String) async throws -> Int32 {
+        try await service().openPreviewDirectory(canonicalPath)
+    }
+
+    public func openPreviewResource(root: Int32, relativePath: String) async throws -> (descriptor: Int32, details: FileDetails) {
+        try await service().openPreviewResource(root: root, relativePath: relativePath)
+    }
+
     public func create(_ template: NodeTemplate, at path: String, mode: mode_t?) async throws {
         try await service().create(template, at: path, mode: mode)
     }
