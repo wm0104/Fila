@@ -12,6 +12,94 @@ The single idea the whole design hangs off: **`filad` opens files, it does not
 read them.** It hands the descriptor back over XPC and forgets it. Bytes flow
 between the app and the kernel with nothing in between.
 
+## deb-dev: DEB-only development isolation
+
+This branch's CI contract overrides the upstream four-wrapper/release descriptions
+below. `.github/workflows/ci.yml` is **Fila DEB CI**, not a second workflow beside
+the original. Pushes select only `deb-dev`; PRs must target `deb-dev`, with no
+head-branch restriction so feature branches can open normal PRs. PR checkouts
+retain the default merge ref, and permissions stay read-only. Manual dispatch
+runs jobs only on `refs/heads/deb-dev`. Every job carries that guard. Do not
+broaden the push/dispatch refs or PR targets to `ipa-dev`, `test` or `main`;
+the independent IPA project owns `ipa-dev`.
+
+- Keep the host harness and Python app tests. Compile the full composition once
+  with `make compile DERIVED_DATA=...` (including SDK, project and localization
+  checks), then use `make _package-deb FLAVOR=roothide DERIVED_DATA=...` and
+  `make _package-deb FLAVOR=rootless DERIVED_DATA=...`. The unchanged packager
+  signs and verifies each package. Do not use `make packages`, `_packages-full`,
+  `tipa`, `ipa` or the sandboxed compilation in this branch's CI. The Makefile
+  still exposes upstream entry points; branch isolation is a workflow contract,
+  not their deletion.
+- Expected packages are exactly `iphoneos-arm64e` (roothide) and `iphoneos-arm64`
+  (rootless) DEBs of one version. Keep their matching full-composition dSYMs and
+  `SHA256SUMS`, no IPA/TIPA or other files. `Scripts/verify-deb-artifacts.py`
+  validates that closed file set, regular-file types, exact checksum membership
+  and SHA256 bytes before upload, before floor-audit, and after download for
+  collection. It is a transfer check, not a substitute for `verify-deb.sh`.
+- `floor-audit` needs `compile`, repeats the older-runtime audit on both DEBs
+  (app/frameworks/extension, daemon and archive helper) on `macos-26`, and fails
+  without a usable baseline. `packages` needs **test, compile and floor-audit**;
+  a failing gate must never yield a collected artifact.
+- Artifact names are `fila-deb-<sha>-<run_id>-<run_attempt>-built` and
+  `...-verified`. Downloads select the exact built name, not a SHA wildcard or
+  another workflow run. Uploads enumerate only the four expected files. Built
+  artifacts last one day; verified artifacts last thirty days. Re-run **all
+  jobs** if retrying: a failed-job-only retry must not fall back to the previous
+  attempt's build artifact.
+- `BUILD_NUMBER_FLOOR=1000` plus this repository's `ci.yml` `github.run_number`
+  carries builds past 451/502. Keeping the workflow file preserves the shared
+  workflow counter; this guarantees neither global ordering across different
+  workflow files nor a new number on re-runs. The marketing version stays as
+  recorded in `Configuration/Version.xcconfig`; no automatic version bump.
+- `release.yml` and `pages.yml` remain for reference but have manual triggers
+  only, read-only permissions and unconditional false guards on **every** job.
+  This development branch does not publish releases or deploy Pages. Their
+  dormant historical steps are not compatible release instructions for the
+  new DEB-only artifact format. Publishing requires a separate reviewed design.
+
+### DEB trash scope
+
+Only the IPA-specific in-process `privateTrashBase` adaptation from c136950 is
+removed here. The DEB's original trash selection (bootstrap or source volume),
+Move to Trash default, saved `usesTrash` preference, Use Trash controls, Put Back,
+Undo and explicitly confirmed permanent deletion remain unchanged. Keep the
+same commit's copy-failure phase/errno diagnostics and their tests. Do not erase
+or migrate any existing trash contents, rewrite device preferences, or exercise
+real deletion/recovery while validating this change.
+
+### Dependencies and verification limits for this branch
+
+Real builds require macOS, make, Python 3, Xcode 27.1 / iPhoneOS SDK 27.1+,
+ldid, dpkg, zip, and the project's existing SwiftPM/WebUI tooling (Node/npm).
+The older-runtime audit additionally needs the installed simulator Swift dylibs
+on `macos-26`. No Apelin Xcode adapter or package build script is declared:
+the registered on-device C/Objective-C toolchain cannot replace these tools.
+
+`python3 -m unittest discover -s Scripts/Tests -v` includes
+`Scripts/Tests/test_workflow_isolation.py`. Its workflow tests use macOS Ruby's
+standard-library YAML/Psych and JSON to parse actual YAML without downloading
+PyYAML; Ruby is a required test dependency, not silently skipped. They check the
+job graph, event/ref truth table, retained gates, exact artifact selection and
+publish-disable policy, with mutations demonstrating rejected regressions. They
+also run `bash -n` on every embedded shell step, including dormant workflows.
+Path-boundary regressions exercise empty and unset variables before commands
+can run, including each DEB flavour separately, with guarded-command stubs and
+mutations that remove the nonempty checks.
+The artifact tests hash synthetic ordinary bytes, never build a Debian archive,
+and cover missing/extra/mixed-version files, symlinks, bad manifests and damaged
+bytes. These are static contracts and transfer-boundary tests, not an Actions
+scheduler, an Xcode build, a signature check or proof of old-iOS compatibility.
+
+On an on-device workspace missing make/Python/Ruby/Xcode, report the unavailable
+checks explicitly; do not install dependencies, fake Xcode support, assemble a
+DEB locally, or claim CI success from syntax checks. Inspect the diff and run the
+available shell/YAML checks; full host tests, builds, signing, floor-audit and
+artifact collection still require an authorized GitHub Actions run. Keep changes
+uncommitted pending review when executable regression tests cannot run, unless
+the user explicitly authorizes a local commit with these validation limits
+recorded in its body. Never push or trigger CI without the user's confirmation.
+
 ## Hard rules
 
 - **File operations are syscalls, never subprocesses.** No shell, no `cp`, no

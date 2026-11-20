@@ -50,7 +50,7 @@ public final class LocalFileService: LocalFileAccess, @unchecked Sendable {
     /// it. There is no privilege boundary to defend in this process, but the
     /// guard is not only about privilege — an unprivileged `rm -rf` of
     /// `/var/mobile/Library` is still the user's device broken.
-    private let operations: FileOperations
+    private let operations = FileOperations(bootstrapRoot: "")
 
     /// One peer's worth of open directory handles — there is exactly one peer.
     /// Touched only on `queue`, like the daemon's copy is touched only on its
@@ -119,31 +119,20 @@ public final class LocalFileService: LocalFileAccess, @unchecked Sendable {
         #endif
     }()
 
-    /// The in-process user's trash, not a packaging or root-capability claim.
-    /// Resolve Foundation's parent spelling, but never the private directory itself.
-    public static let privateTrashBase: String? = {
-        guard processReach == .user,
-              let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
-        return support.deletingLastPathComponent().resolvingSymlinksInPath()
-            .appendingPathComponent(support.lastPathComponent, isDirectory: true)
-            .appendingPathComponent("wiki.qaq.fila/Trash", isDirectory: true).path
-    }()
-
     /// A service that owns its streams — what a build with no privileged
     /// module runs on.
-    public convenience init(privateTrashBase: String? = LocalFileService.privateTrashBase) {
-        self.init(streams: FileEventStreams(), ownsStreams: true, privateTrashBase: privateTrashBase)
+    public convenience init() {
+        self.init(streams: FileEventStreams(), ownsStreams: true)
     }
 
     /// A service reporting into streams someone else owns — what the
     /// privileged link falls back to once its grace period is up, so the
     /// events land on the streams the app was already reading.
-    public convenience init(streams: FileEventStreams, privateTrashBase: String? = LocalFileService.privateTrashBase) {
-        self.init(streams: streams, ownsStreams: false, privateTrashBase: privateTrashBase)
+    public convenience init(streams: FileEventStreams) {
+        self.init(streams: streams, ownsStreams: false)
     }
 
-    private init(streams: FileEventStreams, ownsStreams: Bool, privateTrashBase: String?) {
-        operations = FileOperations(bootstrapRoot: "", privateTrashBase: Self.processReach == .user ? privateTrashBase : nil)
+    private init(streams: FileEventStreams, ownsStreams: Bool) {
         self.streams = streams
         self.ownsStreams = ownsStreams
         FilaLog.info("running in-process, reach: \(reach)")

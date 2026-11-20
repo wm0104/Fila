@@ -25,14 +25,10 @@ public struct FileOperations: Sendable {
     /// sets it; the in-process backend runs the same job in its own process.
     public let archiveHelper: String?
 
-    /// A private, user-owned base for an in-process backend; never a write boundary.
-    public let privateTrashBase: String?
-
-    public init(bootstrapRoot: String, writableRoot: String? = nil, archiveHelper: String? = nil, privateTrashBase: String? = nil) {
+    public init(bootstrapRoot: String, writableRoot: String? = nil, archiveHelper: String? = nil) {
         self.bootstrapRoot = bootstrapRoot
         self.writableRoot = writableRoot
         self.archiveHelper = archiveHelper
-        self.privateTrashBase = privateTrashBase
     }
 
     /// Where the trash lives: inside the bootstrap of a relocated daemon —
@@ -41,19 +37,6 @@ public struct FileOperations: Sendable {
     func trashBase(volumeMountPoint: String) throws -> String {
         if let writableRoot {
             return try FilaPath.resolve(writableRoot)
-        }
-        if let privateTrashBase {
-            let descriptor = try DeletionQuarantine.privateDirectory(privateTrashBase, create: true)
-            defer { close(descriptor) }
-            let trash = FilaTrash.directory(under: privateTrashBase)
-            var metadata = stat()
-            if lstat(trash, &metadata) == 0 {
-                let existing = try DeletionQuarantine.privateDirectory(trash, create: false)
-                close(existing)
-            } else if errno != ENOENT {
-                throw FilaFailure(errno: errno, path: trash)
-            }
-            return privateTrashBase
         }
         return bootstrapRoot.isEmpty ? volumeMountPoint : try FilaPath.resolve(bootstrapRoot)
     }

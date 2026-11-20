@@ -1,52 +1,32 @@
-# Pushes and pull requests: run the host tests and, beside them, compile,
-# package and verify both compositions, keeping the packages for thirty days.
-# Nothing is published from here: a tag publishes, through `release.yml`, the
-# packages of its commit's run, once that run has passed.
-name: CI
+# deb-dev builds only the two Debian layouts. No IPA/TIPA and no publishing.
+name: Fila DEB CI
 
-on:
+"on":
   push:
-    branches:
-      - main
-      # The branch features are proven on before they reach `main`: a push
-      # there builds the same packages, so an install test needs no merge.
-      - test
+    branches: [deb-dev]
   pull_request:
+    branches: [deb-dev]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# A pull request's new push cancels the run of its old one. A push to main
-# keeps its own run however soon the next one follows, since a tag on that
-# commit publishes what that run built — cancelling it would destroy the
-# artifact the tag needs.
 concurrency:
-  group: fila-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: fila-deb-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# The host tests and both compilations run on the `xcode-27` image with Xcode
-# 27.1 selected by name, not the newest Xcode found: the image also carries a
-# 27.2 release candidate, and the packages are built against the iOS 27.1
-# SDK — the SDK from which an iPhone Duo gives the app its whole display and
-# vertical bars. `make compile` refuses an older one (MINIMUM_IPHONEOS_SDK).
-# The host tests use the same toolchain, so the compiler that builds the
-# package for the tests is the one that builds it for the device. The floor
-# audit's runtime comparison runs on `macos-26`, which has the runtimes it needs;
-# see the `floor-audit` job.
+# Keep ci.yml: run_number belongs to this repository's workflow, not a branch
+# or the display name. This floor passes previously shipped builds 451/502.
+# Only this workflow's counter is covered; other workflows are not coordinated.
+# Re-runs keep the build number, but have distinct artifact names. The source
+# marketing version is retained, never automatically bumped.
 env:
-  # `CURRENT_PROJECT_VERSION` has always been the publishing workflow's run
-  # number, and 0.5.12 shipped build 48 from `release.yml`'s 48th run. This
-  # file is new, so `github.run_number` starts again at 1 and the shipped
-  # build number would go backwards — LaunchServices keeps the record of the
-  # higher one, which is the failure the packaging notes describe as "a plist
-  # change that does not take". The floor carries the counter past the old
-  # workflow's last run. Raise it, never lower it.
-  BUILD_NUMBER_FLOOR: "300"
+  BUILD_NUMBER_FLOOR: "1000"
 
 jobs:
   test:
     name: Host tests
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/deb-dev') || (github.event_name == 'pull_request' && github.base_ref == 'deb-dev') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/deb-dev')
     runs-on: xcode-27
     timeout-minutes: 60
     steps:
@@ -56,7 +36,7 @@ jobs:
           sudo xcode-select -s /Applications/Xcode_27.1.app/Contents/Developer
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
-      - name: Test localization build checks
+      - name: Test localization and workflow build checks
         run: python3 -m unittest discover -s Scripts/Tests -v
       - name: Run host tests
         run: make harness
@@ -69,26 +49,17 @@ jobs:
       - name: Test app job connection lifetimes
         run: python3 Scripts/test-app-operations.py
 
-  # The two compositions are two cold builds of the same sources into two
-  # DerivedData directories — neither reuses anything of the other's — so
-  # running them one after the other on one runner cost the sum of both for
-  # no shared work. They are two jobs, and each packages only the wrappers
-  # made from the bundle it built: the heavy bundles never travel between
-  # runners, and no runner archives a product it did not compile.
   compile:
-    name: compile (full composition)
+    name: Compile full composition and verify two DEBs
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/deb-dev') || (github.event_name == 'pull_request' && github.base_ref == 'deb-dev') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/deb-dev')
     runs-on: xcode-27
     timeout-minutes: 120
     steps:
-      # Keyed on the run and the attempt, and named apart from the sandboxed
-      # job's directory: both compositions build Fila.app, and a shared
-      # products directory would let one build's frameworks and receipt be
-      # packaged as the other's.
       - name: Configure build paths
         shell: bash
         run: |
           set -euo pipefail
-          echo "DERIVED_DATA=$RUNNER_TEMP/fila-full-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+          echo "DERIVED_DATA=${RUNNER_TEMP:?}/fila-deb-${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}" >> "${GITHUB_ENV:?}"
       - uses: actions/checkout@v4
       - name: Select Xcode 27.1
         run: |
@@ -97,131 +68,79 @@ jobs:
           xcrun --sdk iphoneos --show-sdk-version
       - name: Install packaging tools
         run: brew install ldid dpkg
-      # No tag reaches a compile any more, so the version is the commit's own,
-      # out of Configuration/Version.xcconfig; only the build number is
-      # pinned, and both compositions pin it to the same run, so the two still
-      # ship one number even though nothing else is shared. `bump-build` does
-      # nothing under CI for exactly this reason.
       - name: Pin the build number to this run
         shell: bash
         run: |
           set -euo pipefail
           make set-version VERSION="$(make --no-print-directory print-version)" \
             BUILD="$(( GITHUB_RUN_NUMBER + BUILD_NUMBER_FLOOR ))"
+      # compile retains SDK, project, localization and extracted-string checks.
       - name: Compile and check localization
-        run: make compile DERIVED_DATA="$DERIVED_DATA"
-      - name: Package and verify both .deb flavours and the .tipa
-        run: make _packages-full DERIVED_DATA="$DERIVED_DATA"
-      # Signing with ldid leaves LC_UUID alone, so these match what ships.
+        run: make compile DERIVED_DATA="${DERIVED_DATA:?}"
+      # _package-deb signs and invokes verify-deb.sh, including composition,
+      # entitlements, metadata and the packager's own iOS floor audit.
+      - name: Package and verify roothide and rootless DEBs only
+        run: |
+          make _package-deb FLAVOR=roothide DERIVED_DATA="${DERIVED_DATA:?}"
+          make _package-deb FLAVOR=rootless DERIVED_DATA="${DERIVED_DATA:?}"
+      # ldid leaves LC_UUID unchanged; these symbols match both layouts.
       - name: Archive dSYMs
         shell: bash
         run: |
           set -euo pipefail
+          : "${DERIVED_DATA:?}" "${GITHUB_WORKSPACE:?}"
           version="$(make --no-print-directory print-version)"
-          cd "$DERIVED_DATA/Build/Products/Release-iphoneos"
-          zip -qry "$GITHUB_WORKSPACE/build/Packages/Fila_${version}_dSYMs.zip" *.dSYM
-      - name: Write exact checksums for what this job built
+          cd "${DERIVED_DATA:?}/Build/Products/Release-iphoneos"
+          zip -qry "${GITHUB_WORKSPACE:?}/build/Packages/Fila_${version}_dSYMs.zip" *.dSYM
+      - name: Write exact checksums and reject unexpected artifacts
+        id: packages
         shell: bash
         run: |
           set -euo pipefail
           version="$(make --no-print-directory print-version)"
-          cd build/Packages
-          shasum -a 256 \
-            "wiki.qaq.fila_${version}_iphoneos-arm64.deb" \
-            "wiki.qaq.fila_${version}_iphoneos-arm64e.deb" \
-            "Fila_${version}.tipa" \
-            "Fila_${version}_dSYMs.zip" > SHA256SUMS.full
-          cat SHA256SUMS.full
-      # Half of the release, kept only long enough to reach the job below:
-      # what a tag downloads is the one merged artifact, and that one is kept
-      # for thirty days.
+          (
+            cd build/Packages
+            shasum -a 256 \
+              "wiki.qaq.fila_${version}_iphoneos-arm64e.deb" \
+              "wiki.qaq.fila_${version}_iphoneos-arm64.deb" \
+              "Fila_${version}_dSYMs.zip" > SHA256SUMS
+          )
+          python3 Scripts/verify-deb-artifacts.py build/Packages
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
-          name: fila-${{ github.sha }}-full
-          path: build/Packages/
+          name: fila-deb-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-built
+          path: |
+            build/Packages/wiki.qaq.fila_${{ steps.packages.outputs.version }}_iphoneos-arm64e.deb
+            build/Packages/wiki.qaq.fila_${{ steps.packages.outputs.version }}_iphoneos-arm64.deb
+            build/Packages/Fila_${{ steps.packages.outputs.version }}_dSYMs.zip
+            build/Packages/SHA256SUMS
           if-no-files-found: error
           retention-days: 1
 
-  compile-sandboxed:
-    name: compile (sandboxed composition)
-    runs-on: xcode-27
-    timeout-minutes: 120
-    steps:
-      # The sandboxed composition builds into SANDBOX_DERIVED_DATA, which the
-      # Makefile derives from DERIVED_DATA unless it is given one. It is given
-      # one here, so the path says which composition made what is in it.
-      - name: Configure build paths
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "SANDBOX_DERIVED_DATA=$RUNNER_TEMP/fila-sandboxed-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v4
-      - name: Select Xcode 27.1
-        run: |
-          sudo xcode-select -s /Applications/Xcode_27.1.app/Contents/Developer
-          xcodebuild -version
-          xcrun --sdk iphoneos --show-sdk-version
-      - name: Install packaging tools
-        run: brew install ldid dpkg
-      - name: Pin the build number to this run
-        shell: bash
-        run: |
-          set -euo pipefail
-          make set-version VERSION="$(make --no-print-directory print-version)" \
-            BUILD="$(( GITHUB_RUN_NUMBER + BUILD_NUMBER_FLOOR ))"
-      - name: Compile the sandboxed composition
-        run: make compile-sandboxed SANDBOX_DERIVED_DATA="$SANDBOX_DERIVED_DATA"
-      - name: Package and verify the .ipa
-        run: make _packages-sandboxed SANDBOX_DERIVED_DATA="$SANDBOX_DERIVED_DATA"
-      - name: Archive dSYMs
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="$(make --no-print-directory print-version)"
-          cd "$SANDBOX_DERIVED_DATA/Build/Products/Release-iphoneos"
-          zip -qry "$GITHUB_WORKSPACE/build/Packages/Fila_${version}_sandboxed_dSYMs.zip" *.dSYM
-      - name: Write exact checksums for what this job built
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="$(make --no-print-directory print-version)"
-          cd build/Packages
-          shasum -a 256 \
-            "Fila_${version}.ipa" \
-            "Fila_${version}_sandboxed_dSYMs.zip" > SHA256SUMS.sandboxed
-          cat SHA256SUMS.sandboxed
-      - uses: actions/upload-artifact@v4
-        with:
-          name: fila-${{ github.sha }}-sandboxed
-          path: build/Packages/
-          if-no-files-found: error
-          retention-days: 1
-
-  # The packagers' floor audit compares every Swift runtime import with the
-  # oldest iOS simulator runtime that keeps its libraries as files. The
-  # `xcode-27` image has none, and Xcode 27.1 will not download an older one,
-  # so there it checks only its own list of late symbols. This job repeats it
-  # on `macos-26`, whose runtimes have the files, over every image in both
-  # .deb flavours, the .tipa and the .ipa this run packaged; it fails if no
-  # such runtime is there either, and nothing is collected until it passes.
+  # xcode-27 has no older runtime with Swift dylibs as files. Repeat the audit
+  # on macos-26 and fail if no usable baseline exists. No sandboxed job needed.
   floor-audit:
     name: Floor audit against an older simulator runtime
-    needs: [compile, compile-sandboxed]
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/deb-dev') || (github.event_name == 'pull_request' && github.base_ref == 'deb-dev') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/deb-dev')
+    needs: [compile]
     runs-on: macos-26
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          pattern: fila-${{ github.sha }}-*
-          merge-multiple: true
+          name: fila-deb-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-built
           path: build/Packages/
+      - name: Verify exact DEB artifact set and checksums
+        run: python3 Scripts/verify-deb-artifacts.py build/Packages
       - name: Install dpkg
         run: brew install dpkg
       - name: Audit every packaged image at the floor
         shell: bash
         run: |
           set -euo pipefail
+          : "${RUNNER_TEMP:?}"
           baseline="$(xcrun simctl runtime list -j | python3 -c '
           import json, os, sys
           for runtime in json.load(sys.stdin).values():
@@ -238,14 +157,12 @@ jobs:
           floor="$(awk -F= '$1 ~ /^[[:space:]]*IPHONEOS_DEPLOYMENT_TARGET[[:space:]]*$/ { gsub(/[[:space:]]/, "", $2); print $2; exit }' Configuration/Base.xcconfig)"
           shopt -s nullglob
           debs=(build/Packages/*.deb)
-          archives=(build/Packages/*.ipa build/Packages/*.tipa)
-          if (( ${#debs[@]} != 2 || ${#archives[@]} != 2 )); then
-            echo "::error::Expected both .deb flavours, the .tipa and the .ipa."
-            ls -l build/Packages
+          if (( ${#debs[@]} != 2 )); then
+            echo "::error::Expected exactly roothide and rootless DEBs."
             exit 1
           fi
           for deb in "${debs[@]}"; do
-            unpacked="$RUNNER_TEMP/floor-audit/$(basename "$deb")"
+            unpacked="${RUNNER_TEMP:?}/floor-audit/$(basename "$deb")"
             mkdir -p "$unpacked"
             dpkg-deb -x "$deb" "$unpacked"
             app="$(find "$unpacked" -maxdepth 5 -type d -name Fila.app -print -quit)"
@@ -257,41 +174,33 @@ jobs:
             fi
             bash Scripts/audit-ios-floor.sh "$floor" "$app" "$daemon" "$helper"
           done
-          for archive in "${archives[@]}"; do
-            unpacked="$RUNNER_TEMP/floor-audit/$(basename "$archive")"
-            mkdir -p "$unpacked"
-            unzip -q "$archive" -d "$unpacked"
-            bash Scripts/audit-ios-floor.sh "$floor" "$unpacked/Payload/Fila.app"
-          done
 
-  # One commit, one artifact: a tag names `fila-<sha>` and finds everything
-  # the release carries in it. Two jobs cannot write one artifact, so the two
-  # halves are merged here, and each composition's own list is checked on the
-  # way in — the runner that hashed a wrapper is not the one that uploaded it
-  # to this job.
   packages:
-    name: Collect the run's packages
-    needs: [compile, compile-sandboxed, floor-audit]
+    name: Collect the run's verified DEBs
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/deb-dev') || (github.event_name == 'pull_request' && github.base_ref == 'deb-dev') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/deb-dev')
+    needs: [test, compile, floor-audit]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          pattern: fila-${{ github.sha }}-*
-          merge-multiple: true
+          name: fila-deb-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-built
           path: build/Packages/
-      - name: Verify both lists and write the one list CI keeps
-        working-directory: build/Packages
+      - name: Verify exact DEB artifact set and read its version
+        id: packages
         shell: bash
         run: |
           set -euo pipefail
-          cat SHA256SUMS.full SHA256SUMS.sandboxed > SHA256SUMS
-          rm SHA256SUMS.full SHA256SUMS.sandboxed
-          sha256sum --check SHA256SUMS
-          cat SHA256SUMS
+          version="$(python3 Scripts/verify-deb-artifacts.py build/Packages)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
-          name: fila-${{ github.sha }}
-          path: build/Packages/
+          name: fila-deb-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-verified
+          path: |
+            build/Packages/wiki.qaq.fila_${{ steps.packages.outputs.version }}_iphoneos-arm64e.deb
+            build/Packages/wiki.qaq.fila_${{ steps.packages.outputs.version }}_iphoneos-arm64.deb
+            build/Packages/Fila_${{ steps.packages.outputs.version }}_dSYMs.zip
+            build/Packages/SHA256SUMS
           if-no-files-found: error
           retention-days: 30
