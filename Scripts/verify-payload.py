@@ -58,11 +58,6 @@ def main():
         if path.name == ".jbroot" or (path.is_symlink() and (not path.exists() or not path.resolve().is_relative_to(app))):
             raise ValueError(f"installed-device artifact or invalid bundle symlink: {path}")
     info = plistlib.loads((app / "Info.plist").read_bytes())
-    if kind == "tipa":
-        if info.get("FilaOffersSileoOpen") is not True:
-            raise ValueError("TIPA must enable FilaOffersSileoOpen")
-    elif "FilaOffersSileoOpen" in info:
-        raise ValueError("FilaOffersSileoOpen belongs only in the TIPA payload")
     wanted = {
         "CFBundleIdentifier": "wiki.qaq.fila", "CFBundleExecutable": "Fila",
         "CFBundleShortVersionString": version.split("-", 1)[0],

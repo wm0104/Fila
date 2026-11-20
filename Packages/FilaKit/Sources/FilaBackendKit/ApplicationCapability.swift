@@ -96,6 +96,4 @@ public protocol ApplicationCapability: AnyObject {
     func install(packageAt url: URL) async -> InstallOutcome
     /// The URL must name a delivered copy owned by the receiving app.
     func openInTrollStore(packageAt url: URL) async -> TrollStoreHandoffOutcome
-    /// Opens a delivered local `.deb` in Sileo; never installs it here.
-    func openInSileo(packageAt url: URL) async -> TrollStoreHandoffOutcome
 }

@@ -176,10 +176,6 @@ public final class ApplicationBackend: Backend, ApplicationCapability {
         await ApplicationCatalog.openInTrollStore(packageAt: url)
     }
 
-    public func openInSileo(packageAt url: URL) async -> TrollStoreHandoffOutcome {
-        await ApplicationCatalog.openInSileo(packageAt: url)
-    }
-
     // MARK: - Changes
 
     /// Hints that the catalogue may have changed: the app came back to the

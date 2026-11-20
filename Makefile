@@ -412,7 +412,6 @@ _packages-full:
 	@$(MAKE) --no-print-directory _package-deb FLAVOR=roothide
 	@$(MAKE) --no-print-directory _package-deb FLAVOR=rootless
 	"$(IPA_PACKAGER)" "$(APP_BUNDLE)" tipa "$(TIPA_OUTPUT)" "$(APP_VERSION)" "$(ENTITLEMENTS)"
-	python3 "$(ROOT_DIR)/Tests/test-packaging.py" --tipa-only "$(dir $(APP_BUNDLE))"
 
 _packages-sandboxed:
 	"$(IPA_PACKAGER)" "$(SANDBOX_APP_BUNDLE)" ipa "$(IPA_OUTPUT)" "$(APP_VERSION)"

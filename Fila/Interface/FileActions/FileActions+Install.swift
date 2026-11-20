@@ -7,54 +7,6 @@ import FilaTerminal
 import UIKit
 
 extension FileActions {
-    func sileoAction(_ path: String, node: FileNode, confirm: @escaping (@escaping () -> Void) -> Void) -> UIAction? {
-        guard SileoOpenPolicy.offers(path: path, kind: node.kind, info: Bundle.main.infoDictionary ?? [:]) else { return nil }
-        return UIAction(
-            title: String(localized: "Open in Sileo"),
-            image: UIImage(systemName: "square.and.arrow.up"),
-        ) { [self] _ in
-            confirm { Task { await self.openInSileo(path) } }
-        }
-    }
-
-    /// Sileo keeps reading this copy when the user later confirms installation.
-    private func openInSileo(_ path: String) async {
-        guard !Self.appInstallInFlight else {
-            FeedbackAlert.show(String(localized: "Installation in Progress"), message: String(localized: "Wait for the current installation to finish, then try again."))
-            return
-        }
-        Self.appInstallInFlight = true
-        defer { Self.appInstallInFlight = false }
-        guard let applications = SystemCapabilities.applications,
-              let location = await applications.locate(bundleIdentifier: "org.coolstar.SileoStore"),
-              let dataPath = location.dataPath else {
-            FeedbackAlert.show(String(localized: "Operation Failed"), message: String(localized: "Sileo is unavailable or cannot receive this file."))
-            return
-        }
-        do {
-            let inbox = try await session.perform { try await ApplicationDocumentInbox.prepare(dataPath: dataPath, access: $0) }
-            let staged = try await session.stage(path)
-            defer { try? FileManager.default.removeItem(at: staged.deletingLastPathComponent()) }
-            let unique = staged.deletingLastPathComponent().appendingPathComponent(UUID().uuidString + ".deb")
-            try FileManager.default.moveItem(at: staged, to: unique)
-            guard await FileDelivery.deliver([.local(unique.path)], into: .local(inbox), mode: .copy, from: activePresenter) else { return }
-            let delivered = URL(fileURLWithPath: inbox).appendingPathComponent(unique.lastPathComponent)
-            switch await applications.openInSileo(packageAt: delivered) {
-            case .opened:
-                break
-            case .unavailable:
-                // No document was sent; remove only the unique copy we delivered.
-                try await session.perform { try await $0.remove(delivered.path, directory: false, overrideGuard: false) }
-                FeedbackAlert.show(String(localized: "Operation Failed"), message: String(localized: "Sileo is unavailable or cannot receive this file."))
-            case .failed, .unanswered:
-                FeedbackAlert.show(
-                    String(localized: "Operation Failed"),
-                    message: String(localized: "Sileo did not confirm opening the file. The copy is kept at \(delivered.path). Check Sileo before trying again."),
-                )
-            }
-        } catch { report(error) }
-    }
-
     /// One Install… entry, routed by format, each behind a card that says what
     /// is about to happen. A `.deb` runs the bootstrap's `dpkg -i` on a
     /// terminal as root, so it needs the daemon and the Run setting. Both app

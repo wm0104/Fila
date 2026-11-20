@@ -3,9 +3,6 @@ import FilaClient
 import FilaProtocol
 import Foundation
 
-/// The same validated receiver-owned directory is used for local Sileo documents.
-typealias ApplicationDocumentInbox = TrollStoreInbox
-
 /// The receiver's Inbox is delivery storage, not Fila's temporary workspace.
 enum TrollStoreInbox {
     static func prepare(dataPath: String, access: any LocalFileAccess) async throws -> String {

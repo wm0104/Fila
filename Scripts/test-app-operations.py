@@ -13,8 +13,7 @@ with tempfile.TemporaryDirectory(prefix='fila-operation-tests-') as directory:
     sources.mkdir(parents=True)
     for name in ['OperationCenter.swift', 'OperationCenter+Operation.swift', 'OperationCenter+Kind.swift', 'OperationCenter+Text.swift']:
         shutil.copy2(repo / 'Fila/Services/Transfers' / name, sources)
-    for name in ['TrollStoreInbox.swift', 'SileoOpenPolicy.swift']:
-        shutil.copy2(repo / 'Fila/Services/Installation' / name, sources)
+    shutil.copy2(repo / 'Fila/Services/Installation/TrollStoreInbox.swift', sources)
     for name in ['OperationCenterSupport.swift', 'OperationCenterTests.swift', 'TrollStoreInboxTests.swift']:
         shutil.copy2(repo / 'Tests/Tasks' / name, sources)
     (package / 'Package.swift').write_text('''// swift-tools-version: 6.0
