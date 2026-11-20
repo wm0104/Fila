@@ -21,58 +21,13 @@ final class TabNavigationController: UINavigationController {
             assertionFailure("\(type(of: controller)) is in a tab but is not a TabContentViewController")
             return
         }
-        content.usesPaneToolbar = usesSharedToolbar
-        configurePaneSwitch(for: content)
         guard content.bar !== bar else { return }
         content.bar = bar
     }
 
-    private func configurePaneSwitch(for page: TabContentViewController) {
-        let canToggle = usesSharedToolbar || page is FileBrowserViewController || page is FileServiceBrowserViewController
-        let item = canToggle ? paneSwitch : nil
-        if page.paneSwitchItem !== item { page.paneSwitchItem = item }
-    }
-
-    private lazy var paneSwitch: UIBarButtonItem = {
-        let item = UIBarButtonItem(image: UIImage(systemName: "rectangle.split.1x2"), primaryAction: UIAction { [weak self] _ in
-            guard let self, let page = topViewController else { return }
-            owner?.content.togglePanes(from: page)
-        })
-        let title = String(localized: "Open Dual Pane")
-        item.title = title
-        item.accessibilityLabel = title
-        item.accessibilityIdentifier = "fila.panes"
-        if #available(iOS 26.0, *) { item.sharesBackground = false }
-        return item
-    }()
-
-    func updatePaneSwitch(isOpen: Bool) {
-        let title = isOpen ? String(localized: "Close Dual Pane") : String(localized: "Open Dual Pane")
-        paneSwitch.title = title
-        paneSwitch.accessibilityLabel = title
-    }
-
-    /// Both top bars stay native. While split, the container displays the active
-    /// page's actual toolbar items once, at the bottom of the window.
-    var usesSharedToolbar = false {
-        didSet {
-            guard usesSharedToolbar != oldValue else { return }
-            for case let page as TabContentViewController in viewControllers {
-                configurePaneSwitch(for: page)
-                page.usesPaneToolbar = usesSharedToolbar
-            }
-            setToolbarHidden(topViewController?.toolbarItems?.isEmpty != false, animated: false)
-        }
-    }
-
-    override func setToolbarHidden(_ hidden: Bool, animated: Bool) {
-        super.setToolbarHidden(usesSharedToolbar || hidden, animated: animated)
-        if usesSharedToolbar { (parent as? BrowserPanesController)?.syncToolbar() }
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        (parent as? BrowserPanesController)?.layoutPanes()
+    override func setToolbarHidden(_: Bool, animated: Bool) {
+        let hasItems = topViewController?.toolbarItems?.isEmpty == false
+        super.setToolbarHidden(!hasItems, animated: animated)
     }
 
     // MARK: - Transitions that wait for their destination

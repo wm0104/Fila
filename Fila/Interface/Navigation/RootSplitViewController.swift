@@ -130,7 +130,7 @@ final class RootSplitViewController: UISplitViewController {
         UIBarButtonItem(
             image: UIImage(systemName: "sidebar.leading"),
             primaryAction: UIAction { [weak self, weak source] _ in
-                guard let self, source.map(content.focusPage) != false else { return }
+                guard let self, source.map({ $0 === content.visibleTop }) != false else { return }
                 if isCollapsed {
                     presentSidebar()
                 } else if displayMode == .secondaryOnly {
@@ -172,7 +172,7 @@ final class RootSplitViewController: UISplitViewController {
     private var animateToggleTransfer = false
 
     func configureSidebarButton(for controller: UIViewController, leadingItems: [UIBarButtonItem]? = nil) {
-        guard content.visiblePages.contains(where: { $0 === controller }), let navigation = controller.navigationController,
+        guard controller === content.visibleTop, let navigation = controller.navigationController,
               let index = navigation.viewControllers.firstIndex(of: controller) else { return }
         prepareNavigationItems(
             for: controller,
@@ -250,8 +250,8 @@ final class RootSplitViewController: UISplitViewController {
         return ![root, URL(fileURLWithPath: root).resolvingSymlinksInPath().path].contains(directory)
     }
 
-    /// A pane opened at a deep folder starts with a single page. Do not build or
-    /// list its parent just to decide whether to show the Back button.
+    /// A location jump starts with a single page. Do not build or list its
+    /// parent just to decide whether to show the Back button.
     private func parentFolder(for page: UIViewController) -> (() -> UIViewController)? {
         if let local = page as? FileBrowserViewController, hasParent(local.directory) {
             return { FileBrowserViewController(directory: (local.directory as NSString).deletingLastPathComponent) }
@@ -263,7 +263,7 @@ final class RootSplitViewController: UISplitViewController {
     }
 
     private func navigateBack(from source: UIViewController, to requested: UIViewController? = nil) {
-        guard content.focusPage(source), !source.isEditing, !source.navigationItem.hidesBackButton,
+        guard source === content.visibleTop, !source.isEditing, !source.navigationItem.hidesBackButton,
               let navigation = source.navigationController,
               navigation.transitionCoordinator == nil else { return }
         if navigation.viewControllers.count == 1 {
@@ -597,11 +597,12 @@ extension RootSplitViewController: UISplitViewControllerDelegate {
 
 extension RootSplitViewController: UIGestureRecognizerDelegate {
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        guard let top = content.visiblePages.first(where: { $0.navigationController?.interactivePopGestureRecognizer === gestureRecognizer }),
-              let navigation = top.navigationController, navigation.viewControllers.count > 1, navigation.transitionCoordinator == nil,
+        guard let top = content.visibleTop, let navigation = top.navigationController,
+              gestureRecognizer === navigation.interactivePopGestureRecognizer,
+              navigation.viewControllers.count > 1, navigation.transitionCoordinator == nil,
               (navigation as? TabNavigationController)?.isTransitionPending != true,
               !top.isEditing, !top.navigationItem.hidesBackButton,
               !top.isModalInPresentation else { return false }
-        return content.focusPage(top)
+        return true
     }
 }

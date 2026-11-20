@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test viewer editing, pane geometry and HTML resource policies on the host."""
+"""Test viewer editing and HTML resource policies on the host."""
 from pathlib import Path
 import shutil
 import subprocess
@@ -13,8 +13,8 @@ with tempfile.TemporaryDirectory(prefix='fila-viewer-tests-') as directory:
     sources.mkdir(parents=True)
     for name in ['Text/TextSearch.swift', 'Text/TextEncoding.swift', 'Text/TextReplacement.swift', 'Shared/AtomicSaveOperation.swift']:
         shutil.copy2(repo / 'Fila/Interface/Viewer' / name, sources / Path(name).name)
-    for path in ['Fila/Interface/Tabs/PaneLayout.swift', 'Fila/Interface/Viewer/Document/DocumentPreviewPolicy.swift',
-                 'Fila/Interface/Viewer/Document/HTMLReadableText.swift', 'Tests/Viewer/PaneAndHTMLTests.swift']:
+    for path in ['Fila/Interface/Viewer/Document/DocumentPreviewPolicy.swift',
+                 'Fila/Interface/Viewer/Document/HTMLReadableText.swift', 'Tests/Viewer/HTMLPreviewTests.swift']:
         shutil.copy2(repo / path, sources / Path(path).name)
     shutil.copy2(repo / 'Tests/Viewer/ViewerTextTests.swift', sources / 'ViewerTextTests.swift')
     shutil.copy2(repo / 'Tests/Viewer/TextReplacementTests.swift', sources / 'TextReplacementTests.swift')

@@ -10,7 +10,7 @@ Maintainer: OwnGoal Studio <not-gonna-reply@owngoal.dev>
 Author: OwnGoal Studio <not-gonna-reply@owngoal.dev>
 Section: 乌龙
 X-WM0104-Release-Date: 2026-11-19
-X-WM0104-Changelog: 0.8.4-4 | 2026-11-19 | 新增双窗浏览，可拖动分隔条调整大小；新增 HTML 网页预览，默认离线显示
+X-WM0104-Changelog: 0.8.4-4 | 2026-11-19 | 新增 HTML 网页预览，默认离线显示
 Priority: optional
 Depends: firmware (>= 15.0), uikittools, launchctl
 Installed-Size: @INSTALLED_SIZE@

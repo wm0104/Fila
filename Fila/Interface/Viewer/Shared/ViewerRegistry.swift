@@ -250,7 +250,7 @@ final class ViewerContainerViewController: TabContentViewController {
         trailingNavigationItems = ((child as? TabContentViewController)?.trailingNavigationItems ?? []) + [menuItem]
         navigationItem.hidesBackButton = item?.hidesBackButton ?? false
         let leadingItems = item?.leftBarButtonItems ?? []
-        if let shell, shell.content.visiblePages.contains(where: { $0 === self }) {
+        if let shell, shell.content.visibleTop === self {
             // Compose the child's exit and shell controls in one assignment.
             // Clearing first would remove the prepared Back during viewWillAppear.
             shell.configureSidebarButton(for: self, leadingItems: leadingItems)
