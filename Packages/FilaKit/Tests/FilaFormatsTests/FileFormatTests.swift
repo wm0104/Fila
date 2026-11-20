@@ -41,9 +41,11 @@ struct FileFormatTests {
     }
 
     @Test(arguments: ["index.html", "page.HTM", "notes.xhtml"])
-    func `HTML opens as a page without overriding a binary signature`(name: String) {
-        #expect(FileFormat.detect(name: name) == .html)
-        #expect(FileFormat.detect(head: Data("<p>Hello</p>".utf8), name: name) == .html)
+    func `HTML opens as source text without overriding a binary signature`(name: String) {
+        #expect(FileFormat.detect(name: name) == .text)
+        #expect(FileFormat.detect(head: Data("<p>Hello</p>".utf8), name: name) == .text)
+        #expect(FileFormat.detect(head: Data(), name: name) == .text)
+        #expect(FileFormat.documentMIMEType(name: name) == nil)
         #expect(FileFormat.detect(head: Data("%PDF-1.7".utf8), name: name) == .pdf)
         #expect(FileFormat.detect(head: Data("<p>Hello</p>".utf8), name: "notes.txt") == .text)
     }

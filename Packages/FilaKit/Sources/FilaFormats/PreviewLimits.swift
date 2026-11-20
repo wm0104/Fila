@@ -31,7 +31,7 @@ public enum PreviewLimits {
         // These readers window their input; text has its own bounded head preview.
         case .audio, .video, .binary, .machO, .text: return
         case .archive: limit = streamingFileByteCount
-        case .propertyList, .html: limit = textByteCount
+        case .propertyList: limit = textByteCount
         default: limit = fileByteCount
         }
         guard byteCount <= limit else { throw FormatFailure.tooLarge(byteCount: byteCount, limit: limit) }

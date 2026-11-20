@@ -19,7 +19,6 @@ public enum FileFormat: Sendable, Hashable, CaseIterable {
     /// The only format that needs its extension as well as its bytes — see
     /// `detect(head:name:)` and `documentMIMEType(name:)`.
     case document
-    case html
     case sqlite
     case text
     /// Binary content without a dedicated viewer.
@@ -227,7 +226,7 @@ private func extensionMatch(_ name: String) -> FileFormat? {
     // show it as an empty archive or a failure; a real archive inside one
     // is still found by its signature first.
     case "bin": return .binary
-    case "html", "htm", "xhtml": return .html
+    case "html", "htm", "xhtml": return .text
     case "txt", "md", "json", "log", "sh", "conf", "cfg", "ini", "yml", "yaml", "c", "h", "m",
          "mm", "swift", "js", "py", "rb", "css", "xml", "caml", "pl", "list": return .text
     default: break

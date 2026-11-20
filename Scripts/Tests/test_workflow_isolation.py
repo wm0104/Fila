@@ -26,7 +26,6 @@ PREFIX = 'fila-deb-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt
 VERIFY = 'python3 Scripts/verify-deb-artifacts.py build/Packages'
 UPLOAD_PATHS = '\n'.join([
     'build/Packages/wiki.qaq.fila_${{ steps.packages.outputs.version }}_iphoneos-arm64e.deb',
-    'build/Packages/wiki.qaq.fila_${{ steps.packages.outputs.version }}_iphoneos-arm64.deb',
     'build/Packages/Fila_${{ steps.packages.outputs.version }}_dSYMs.zip',
     'build/Packages/SHA256SUMS',
 ])
@@ -79,15 +78,15 @@ def contract(ci, release, pages):
         require(command in host, f'missing host check: {command}')
     build = runs(jobs['compile'])
     require('make compile DERIVED_DATA="${DERIVED_DATA:?}"' in build, 'compile/localization gate')
-    require('make _package-deb FLAVOR=roothide DERIVED_DATA="${DERIVED_DATA:?}"\n'
-            'make _package-deb FLAVOR=rootless DERIVED_DATA="${DERIVED_DATA:?}"' in build,
-            'two specific DEB recipes')
+    require('make _package-deb FLAVOR=roothide DERIVED_DATA="${DERIVED_DATA:?}"' in build,
+            'roothide-only DEB recipe')
     text = '\n'.join(build)
     require('BUILD="$(( GITHUB_RUN_NUMBER + BUILD_NUMBER_FLOOR ))"' in text, 'run build number')
     require('VERSION="$(make --no-print-directory print-version)"' in text, 'keep source version')
     require('*.dSYM' in text and 'zip -qry' in text, 'dSYMs')
     require('shasum -a 256' in text and '> SHA256SUMS' in text, 'SHA256 list')
-    for forbidden in ['_packages', 'compile-sandboxed', 'package-ipa.sh', 'make ipa', 'make tipa']:
+    for forbidden in ['_packages', 'compile-sandboxed', 'package-ipa.sh', 'make ipa', 'make tipa',
+                      'FLAVOR=rootless', 'iphoneos-arm64.deb']:
         require(forbidden not in text, f'forbidden recipe: {forbidden}')
     require(VERIFY in text, 'validate before upload')
     require(VERIFY in runs(jobs['floor-audit']), 'floor-audit: artifact verification')
@@ -97,7 +96,7 @@ def contract(ci, release, pages):
         'version="$(' + VERIFY + ')"\n'
         'echo "version=$version" >> "$GITHUB_OUTPUT"'), 'packages: verified version output')
     audit = '\n'.join(runs(jobs['floor-audit']))
-    require('${#debs[@]} != 2' in audit, 'exactly two audit inputs')
+    require('${#debs[@]} != 1' in audit, 'exactly one audit input')
     require('if [[ -z "$baseline" ]]' in audit and 'exit 1' in audit, 'baseline required')
     require('bash Scripts/audit-ios-floor.sh "$floor" "$app" "$daemon" "$helper"' in audit,
             'audit all packaged images')
@@ -193,6 +192,9 @@ class WorkflowIsolationTests(unittest.TestCase):
             lambda c, r, p: c['jobs']['floor-audit'].update(needs=['compile', 'compile-sandboxed']),
             lambda c, r, p: c['jobs']['packages'].update(needs=['compile']),
             lambda c, r, p: c['jobs']['compile']['steps'].append({'run': 'make _packages-full'}),
+            lambda c, r, p: c['jobs']['compile']['steps'].append({'run': 'make _package-deb FLAVOR=rootless'}),
+            lambda c, r, p: c['jobs']['floor-audit']['steps'][-1].update(
+                run=c['jobs']['floor-audit']['steps'][-1]['run'].replace('${#debs[@]} != 1', '${#debs[@]} != 2')),
             lambda c, r, p: c['jobs']['floor-audit']['steps'][1]['with'].update(name='fila-${{ github.sha }}-*'),
             lambda c, r, p: c['jobs']['compile']['steps'][-1]['with'].update(path='build/Packages/'),
             lambda c, r, p: r['on'].update(push={'tags': ['v*']}),
@@ -215,10 +217,9 @@ class WorkflowIsolationTests(unittest.TestCase):
             for variable in ['RUNNER_TEMP', 'GITHUB_ENV', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT']
         ]
         cases.append((steps['Compile and check localization'], 'DERIVED_DATA'))
-        # Exercise each recipe independently: the first flavour must not hide
-        # an unguarded second flavour merely by failing before it.
+        # Exercise the roothide recipe independently of compilation.
         cases.extend((line, 'DERIVED_DATA') for line in
-                     steps['Package and verify roothide and rootless DEBs only'].splitlines()
+                     steps['Package and verify roothide DEB only'].splitlines()
                      if line.strip().startswith('make '))
         cases.extend((steps['Archive dSYMs'], variable)
                      for variable in ['DERIVED_DATA', 'GITHUB_WORKSPACE'])
@@ -282,8 +283,8 @@ class ArtifactBoundaryTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.directory = Path(self.temporary.name)
         self.version = '0.8.4-3'
-        self.names = [f'wiki.qaq.fila_{self.version}_iphoneos-arm64{suffix}.deb' for suffix in ['e', '']]
-        self.names.append(f'Fila_{self.version}_dSYMs.zip')
+        self.names = [f'wiki.qaq.fila_{self.version}_iphoneos-arm64e.deb',
+                      f'Fila_{self.version}_dSYMs.zip']
         # Not archives: only testing transfer bytes, never a fake installable DEB.
         for name in self.names:
             (self.directory / name).write_bytes(('synthetic bytes: ' + name).encode())
@@ -295,11 +296,12 @@ class ArtifactBoundaryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.helper.validate(self.directory)
 
-    def test_exact_two_debs_and_symbols_pass(self):
+    def test_exact_arm64e_deb_and_symbols_pass(self):
         self.assertEqual(self.helper.validate(self.directory), self.version)
 
     def test_unexpected_archives_files_and_directories_fail(self):
-        for name in ['Fila.ipa', 'Fila.tipa', 'old.deb', 'SHA256SUMS.full', '.hidden']:
+        for name in ['Fila.ipa', 'Fila.tipa', 'old.deb', 'SHA256SUMS.full', '.hidden',
+                     f'wiki.qaq.fila_{self.version}_iphoneos-arm64.deb']:
             with self.subTest(name=name):
                 path = self.directory / name
                 path.write_bytes(b'extra')
@@ -342,7 +344,7 @@ class ArtifactBoundaryTests(unittest.TestCase):
             path = self.directory / name
             data = path.read_bytes()
             path.unlink()
-            path.symlink_to(self.names[2])
+            path.symlink_to(self.names[1])
             with self.subTest(name=name):
                 self.reject()
             path.unlink()

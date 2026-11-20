@@ -1,4 +1,4 @@
-# deb-dev builds only the two Debian layouts. No IPA/TIPA and no publishing.
+# deb-dev builds only the roothide arm64e Debian layout. No IPA/TIPA or publishing.
 name: Fila DEB CI
 
 "on":
@@ -50,7 +50,7 @@ jobs:
         run: python3 Scripts/test-app-operations.py
 
   compile:
-    name: Compile full composition and verify two DEBs
+    name: Compile full composition and verify arm64e DEB
     if: (github.event_name == 'push' && github.ref == 'refs/heads/deb-dev') || (github.event_name == 'pull_request' && github.base_ref == 'deb-dev') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/deb-dev')
     runs-on: xcode-27
     timeout-minutes: 120
@@ -79,11 +79,9 @@ jobs:
         run: make compile DERIVED_DATA="${DERIVED_DATA:?}"
       # _package-deb signs and invokes verify-deb.sh, including composition,
       # entitlements, metadata and the packager's own iOS floor audit.
-      - name: Package and verify roothide and rootless DEBs only
-        run: |
-          make _package-deb FLAVOR=roothide DERIVED_DATA="${DERIVED_DATA:?}"
-          make _package-deb FLAVOR=rootless DERIVED_DATA="${DERIVED_DATA:?}"
-      # ldid leaves LC_UUID unchanged; these symbols match both layouts.
+      - name: Package and verify roothide DEB only
+        run: make _package-deb FLAVOR=roothide DERIVED_DATA="${DERIVED_DATA:?}"
+      # ldid leaves LC_UUID unchanged; these symbols match the roothide package.
       - name: Archive dSYMs
         shell: bash
         run: |
@@ -102,7 +100,6 @@ jobs:
             cd build/Packages
             shasum -a 256 \
               "wiki.qaq.fila_${version}_iphoneos-arm64e.deb" \
-              "wiki.qaq.fila_${version}_iphoneos-arm64.deb" \
               "Fila_${version}_dSYMs.zip" > SHA256SUMS
           )
           python3 Scripts/verify-deb-artifacts.py build/Packages
@@ -112,7 +109,6 @@ jobs:
           name: fila-deb-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-built
           path: |
             build/Packages/wiki.qaq.fila_${{ steps.packages.outputs.version }}_iphoneos-arm64e.deb
-            build/Packages/wiki.qaq.fila_${{ steps.packages.outputs.version }}_iphoneos-arm64.deb
             build/Packages/Fila_${{ steps.packages.outputs.version }}_dSYMs.zip
             build/Packages/SHA256SUMS
           if-no-files-found: error
@@ -157,8 +153,8 @@ jobs:
           floor="$(awk -F= '$1 ~ /^[[:space:]]*IPHONEOS_DEPLOYMENT_TARGET[[:space:]]*$/ { gsub(/[[:space:]]/, "", $2); print $2; exit }' Configuration/Base.xcconfig)"
           shopt -s nullglob
           debs=(build/Packages/*.deb)
-          if (( ${#debs[@]} != 2 )); then
-            echo "::error::Expected exactly roothide and rootless DEBs."
+          if (( ${#debs[@]} != 1 )); then
+            echo "::error::Expected exactly one roothide arm64e DEB."
             exit 1
           fi
           for deb in "${debs[@]}"; do
@@ -176,7 +172,7 @@ jobs:
           done
 
   packages:
-    name: Collect the run's verified DEBs
+    name: Collect the run's verified arm64e DEB
     if: (github.event_name == 'push' && github.ref == 'refs/heads/deb-dev') || (github.event_name == 'pull_request' && github.base_ref == 'deb-dev') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/deb-dev')
     needs: [test, compile, floor-audit]
     runs-on: ubuntu-latest
@@ -199,7 +195,6 @@ jobs:
           name: fila-deb-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-verified
           path: |
             build/Packages/wiki.qaq.fila_${{ steps.packages.outputs.version }}_iphoneos-arm64e.deb
-            build/Packages/wiki.qaq.fila_${{ steps.packages.outputs.version }}_iphoneos-arm64.deb
             build/Packages/Fila_${{ steps.packages.outputs.version }}_dSYMs.zip
             build/Packages/SHA256SUMS
           if-no-files-found: error

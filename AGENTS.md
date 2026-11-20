@@ -25,25 +25,25 @@ the independent IPA project owns `ipa-dev`.
 
 - Keep the host harness and Python app tests. Compile the full composition once
   with `make compile DERIVED_DATA=...` (including SDK, project and localization
-  checks), then use `make _package-deb FLAVOR=roothide DERIVED_DATA=...` and
-  `make _package-deb FLAVOR=rootless DERIVED_DATA=...`. The unchanged packager
-  signs and verifies each package. Do not use `make packages`, `_packages-full`,
-  `tipa`, `ipa` or the sandboxed compilation in this branch's CI. The Makefile
+  checks), then use `make _package-deb FLAVOR=roothide DERIVED_DATA=...` only.
+  The unchanged packager signs and verifies the package. Do not use
+  `make packages`, `_packages-full`, `tipa`, `ipa` or the sandboxed compilation
+  in this branch's CI. The Makefile
   still exposes upstream entry points; branch isolation is a workflow contract,
   not their deletion.
-- Expected packages are exactly `iphoneos-arm64e` (roothide) and `iphoneos-arm64`
-  (rootless) DEBs of one version. Keep their matching full-composition dSYMs and
-  `SHA256SUMS`, no IPA/TIPA or other files. `Scripts/verify-deb-artifacts.py`
+- Expected package is exactly one `iphoneos-arm64e` (roothide) DEB. Keep its
+  matching full-composition dSYMs and `SHA256SUMS`, no rootless arm64 DEB,
+  IPA/TIPA or other files. `Scripts/verify-deb-artifacts.py`
   validates that closed file set, regular-file types, exact checksum membership
   and SHA256 bytes before upload, before floor-audit, and after download for
   collection. It is a transfer check, not a substitute for `verify-deb.sh`.
-- `floor-audit` needs `compile`, repeats the older-runtime audit on both DEBs
+- `floor-audit` needs `compile`, repeats the older-runtime audit on that DEB
   (app/frameworks/extension, daemon and archive helper) on `macos-26`, and fails
   without a usable baseline. `packages` needs **test, compile and floor-audit**;
   a failing gate must never yield a collected artifact.
 - Artifact names are `fila-deb-<sha>-<run_id>-<run_attempt>-built` and
   `...-verified`. Downloads select the exact built name, not a SHA wildcard or
-  another workflow run. Uploads enumerate only the four expected files. Built
+  another workflow run. Uploads enumerate only the three expected files. Built
   artifacts last one day; verified artifacts last thirty days. Re-run **all
   jobs** if retrying: a failed-job-only retry must not fall back to the previous
   attempt's build artifact.
@@ -57,6 +57,13 @@ the independent IPA project owns `ipa-dev`.
   This development branch does not publish releases or deploy Pages. Their
   dormant historical steps are not compatible release instructions for the
   new DEB-only artifact format. Publishing requires a separate reviewed design.
+
+### DEB HTML handling
+
+HTML, HTM and XHTML open as source text in the ordinary text editor. This branch
+has no HTML web preview, script/HTTPS preview toggle or extracted-body fallback.
+Keep HTML/XML syntax highlighting, WebUI resources and the Office/iWork/RTF
+converter; those are not HTML preview features.
 
 ### DEB trash scope
 
@@ -84,7 +91,7 @@ job graph, event/ref truth table, retained gates, exact artifact selection and
 publish-disable policy, with mutations demonstrating rejected regressions. They
 also run `bash -n` on every embedded shell step, including dormant workflows.
 Path-boundary regressions exercise empty and unset variables before commands
-can run, including each DEB flavour separately, with guarded-command stubs and
+can run, including the roothide DEB recipe, with guarded-command stubs and
 mutations that remove the nonempty checks.
 The artifact tests hash synthetic ordinary bytes, never build a Debian archive,
 and cover missing/extra/mixed-version files, symlinks, bad manifests and damaged

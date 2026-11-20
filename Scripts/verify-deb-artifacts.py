@@ -11,7 +11,7 @@ import re
 import sys
 
 VERSION = r'[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9]+)?'
-DEB = re.compile(rf'wiki\.qaq\.fila_({VERSION})_iphoneos-arm64(e?)\.deb', re.ASCII)
+DEB = re.compile(rf'wiki\.qaq\.fila_({VERSION})_iphoneos-arm64e\.deb', re.ASCII)
 
 
 def validate(directory):
@@ -26,11 +26,10 @@ def validate(directory):
     version = versions.pop()
     payloads = {
         f'wiki.qaq.fila_{version}_iphoneos-arm64e.deb',
-        f'wiki.qaq.fila_{version}_iphoneos-arm64.deb',
         f'Fila_{version}_dSYMs.zip',
     }
     if names != payloads | {'SHA256SUMS'}:
-        raise ValueError('expected exactly two DEBs, their dSYMs and SHA256SUMS; no IPA/TIPA or extras')
+        raise ValueError('expected exactly one arm64e DEB, its dSYMs and SHA256SUMS; no arm64, IPA/TIPA or extras')
 
     hashes = {}
     for line in (directory / 'SHA256SUMS').read_text(encoding='ascii').splitlines():
@@ -39,7 +38,7 @@ def validate(directory):
             raise ValueError('unexpected, duplicate or malformed checksum entry')
         hashes[match[2]] = match[1]
     if set(hashes) != payloads:
-        raise ValueError('checksum list must cover exactly the two DEBs and dSYMs')
+        raise ValueError('checksum list must cover exactly the arm64e DEB and dSYMs')
     for name, expected in hashes.items():
         digest = hashlib.sha256()
         with (directory / name).open('rb') as stream:

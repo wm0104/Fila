@@ -18,18 +18,12 @@ import WebKit
 /// extension that opens the URL itself, as `mobile`.
 ///
 /// Converted documents stay offline; the converter needs its own scripts for
-/// workbook tabs. HTML uses the same single descriptor but starts scriptless
-/// and offline. Its optional scripts and HTTPS never apply to another viewer.
-///
-/// HTML can fall back to native static text when WebContent exits repeatedly.
-/// When WebKit declines an Office type or fails to draw it, the screen says so —
-/// see `documentViewerFailed`. It does not open the file as its bytes: a
-/// `.docx` is a ZIP, and dropping someone into its parts reads as Fila
+/// workbook tabs. When WebKit declines a type or fails to draw it, the screen
+/// says so — see `documentViewerFailed`. It does not open the file as its bytes:
+/// a `.docx` is a ZIP, and dropping someone into its parts reads as Fila
 /// mistaking their document for an archive.
 final class DocumentViewerViewController: TabContentViewController, WKNavigationDelegate {
     private let handler: DocumentSchemeHandler?
-    private let policy: DocumentPreviewPolicy
-    private let file: DescriptorFile
     private var webView: WKWebView?
     private var rules: WKContentRuleList?
     private var retried = false
@@ -47,13 +41,10 @@ final class DocumentViewerViewController: TabContentViewController, WKNavigation
         case abandoned
     }
 
-    init(details: FileDetails, file: DescriptorFile, policy: DocumentPreviewPolicy = .office) {
-        self.policy = policy
-        self.file = file
+    init(details: FileDetails, file: DescriptorFile) {
         let name = (details.path as NSString).lastPathComponent
-        let mime = policy == .office ? FileFormat.documentMIMEType(name: name) : "text/html"
-        handler = mime.map {
-            DocumentSchemeHandler(file: file, name: name, mimeType: $0, contentSecurityPolicy: policy.contentSecurityPolicy)
+        handler = FileFormat.documentMIMEType(name: name).map {
+            DocumentSchemeHandler(file: file, name: name, mimeType: $0)
         }
         super.init(nibName: nil, bundle: nil)
         title = name
@@ -78,21 +69,11 @@ final class DocumentViewerViewController: TabContentViewController, WKNavigation
             abandon("no document type for its name")
             return
         }
-        if policy != .office {
-            let action = UIAction(title: String(localized: "Allow Scripts and HTTPS for This Preview"),
-                                  state: policy == .interactiveHTML ? .on : .off) { [weak self] _ in
-                guard let self else { return }
-                (parent as? ViewerContainerViewController)?.setHTMLPolicy(
-                    policy == .offlineHTML ? .interactiveHTML : .offlineHTML, file: file, from: self,
-                )
-            }
-            (parent as? ViewerContainerViewController)?.childMenuElements = [action]
-        }
-        DocumentContentRules.load(policy) { [weak self] rules in
+        DocumentContentRules.load { [weak self] rules in
             guard let self, state == .loading else { return }
             // Fail closed: without the rules the page could reach the network.
             guard let rules else {
-                abandon("the content rules did not compile", readHTML: policy != .office)
+                abandon("the content rules did not compile")
                 return
             }
             self.rules = rules
@@ -106,7 +87,7 @@ final class DocumentViewerViewController: TabContentViewController, WKNavigation
     private func loadDocument(_ handler: DocumentSchemeHandler, rules: WKContentRuleList) {
         let web = WKWebView(frame: .zero, configuration: WKWebViewConfiguration().then {
             $0.websiteDataStore = .nonPersistent()
-            $0.defaultWebpagePreferences.allowsContentJavaScript = policy.allowsScripts
+            $0.defaultWebpagePreferences.allowsContentJavaScript = true
             $0.preferences.javaScriptCanOpenWindowsAutomatically = false
             $0.mediaTypesRequiringUserActionForPlayback = .all
             $0.setURLSchemeHandler(handler, forURLScheme: DocumentSchemeHandler.scheme)
@@ -143,18 +124,14 @@ final class DocumentViewerViewController: TabContentViewController, WKNavigation
     /// Deferred a turn: the container replaces this controller, and doing it
     /// from inside a WebKit callback or `viewDidLoad` would pull the view out
     /// from under its own caller.
-    private func abandon(_ reason: String, readHTML: Bool = false) {
+    private func abandon(_ reason: String) {
         guard state != .abandoned else { return }
         state = .abandoned
         FilaLog.info("document viewer: \(reason)")
         retireWebView()
         DispatchQueue.main.async { [weak self] in
             guard let self, let container = parent as? ViewerContainerViewController else { return }
-            if readHTML {
-                container.showStaticHTML(file: file, from: self)
-            } else {
-                container.documentViewerFailed(from: self)
-            }
+            container.documentViewerFailed(from: self)
         }
     }
 
@@ -167,11 +144,6 @@ final class DocumentViewerViewController: TabContentViewController, WKNavigation
     ) {
         guard web === webView, let handler, let url = action.request.url else {
             decisionHandler(.cancel)
-            return
-        }
-        if policy != .office {
-            // HTTPS opt-in is for subresources, never another page or app.
-            decisionHandler(action.targetFrame?.isMainFrame == true && handler.isDocument(url) ? .allow : .cancel)
             return
         }
         if handler.isDocument(url) {
@@ -237,40 +209,45 @@ final class DocumentViewerViewController: TabContentViewController, WKNavigation
     func webViewWebContentProcessDidTerminate(_ web: WKWebView) {
         guard web === webView, state != .abandoned, let handler, let rules else { return }
         let phase = state == .shown ? "after display" : "before display"
-        switch policy.afterProcessExit(hadDisplayed: state == .shown, alreadyRetried: retried) {
-        case .retry:
-            FilaLog.info("document viewer: WebContent ended \(phase); retrying \(policy.rawValue) once")
+        if state == .shown, !retried {
+            FilaLog.info("document viewer: WebContent ended \(phase); retrying once")
             retried = true
             retireWebView()
             DispatchQueue.main.async { [weak self] in
                 guard let self, state != .abandoned else { return }
                 loadDocument(handler, rules: rules)
             }
-        case .readStaticHTML:
-            abandon("WebContent ended \(phase); switching to static HTML text", readHTML: true)
-        case .reportFailure:
+        } else {
             abandon("WebContent ended \(phase)")
         }
     }
 }
 
-/// Keep the converter's and both HTML policies separate, including concurrent
-/// opens in different tabs. A failed compile never starts an unfiltered load.
+/// Office conversion stays offline. Compile once and share the immutable list;
+/// a failed compile never starts an unfiltered load.
 @MainActor
 private enum DocumentContentRules {
-    private static var compiled: [DocumentPreviewPolicy: WKContentRuleList] = [:]
-    private static var waiting: [DocumentPreviewPolicy: [(WKContentRuleList?) -> Void]] = [:]
+    private static var compiled: WKContentRuleList?
+    private static var waiting: [(WKContentRuleList?) -> Void] = []
+    private static let contentRules: String = {
+        let block = #"{"trigger":{"url-filter":".*"},"action":{"type":"block"}}"#
+        let schemes = [DocumentSchemeHandler.scheme, "data", "x-apple-ql-id", "about", "blob"]
+        let allow = schemes.map { #"{"trigger":{"url-filter":"^\#($0):"},"action":{"type":"ignore-previous-rules"}}"# }
+        return "[" + ([block] + allow).joined(separator: ",") + "]"
+    }()
 
-    static func load(_ policy: DocumentPreviewPolicy, _ completion: @escaping (WKContentRuleList?) -> Void) {
-        if let list = compiled[policy] { completion(list); return }
+    static func load(_ completion: @escaping (WKContentRuleList?) -> Void) {
+        if let compiled { completion(compiled); return }
         guard let store = WKContentRuleListStore.default() else { completion(nil); return }
-        waiting[policy, default: []].append(completion)
-        guard waiting[policy]?.count == 1 else { return }
-        store.compileContentRuleList(forIdentifier: "wiki.qaq.fila.preview." + policy.rawValue,
-                                     encodedContentRuleList: policy.contentRules(documentScheme: DocumentSchemeHandler.scheme)) { list, error in
+        waiting.append(completion)
+        guard waiting.count == 1 else { return }
+        store.compileContentRuleList(forIdentifier: "wiki.qaq.fila.preview.office",
+                                     encodedContentRuleList: contentRules) { list, error in
             if let error { FilaLog.warning("document content rules: \(error)") }
-            compiled[policy] = list
-            for caller in waiting.removeValue(forKey: policy) ?? [] { caller(list) }
+            compiled = list
+            let callers = waiting
+            waiting = []
+            for caller in callers { caller(list) }
         }
     }
 }
