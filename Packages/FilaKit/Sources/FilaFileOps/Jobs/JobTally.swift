@@ -33,6 +33,7 @@ final class JobTally {
     var removalPath: (staged: String, original: String)?
 
     private let report: (JobProgress) -> Void
+    private let note: (String) -> Void
 
     private var completedBytes: Int64 = 0
     private var currentFileBytes: Int64 = 0
@@ -45,9 +46,10 @@ final class JobTally {
     /// short enough to finish inside one interval must still say something.
     private var lastReport = DispatchTime(uptimeNanoseconds: 1)
 
-    init(job: FileJob, report: @escaping (JobProgress) -> Void) {
+    init(job: FileJob, report: @escaping (JobProgress) -> Void, note: @escaping (String) -> Void = { _ in }) {
         self.job = job
         self.report = report
+        self.note = note
     }
 
     func beginItem(_ path: String) {
@@ -86,11 +88,24 @@ final class JobTally {
     /// A copy's failure, named by the side it is about. `copyfile(3)` does
     /// not say which end failed, but some errnos can only be the end being
     /// written: a read-only volume, or one without room.
-    func recordCopyFailure(source: String?, destination: String?) {
+    func recordCopyFailure(source: String?, destination: String?, code: Int32? = nil, phase: String = "copyfile") {
         guard failure == nil else { return }
-        let code = Darwin.errno
-        let errno = code == 0 ? EIO : code
-        failure = FilaFailure(errno: errno, path: filaFailsWriting(errno) ? destination ?? source : source)
+        let captured = code ?? Darwin.errno
+        let error = captured == 0 ? EIO : captured
+        failure = FilaFailure(errno: error, path: filaFailsWriting(error) ? destination ?? source : source)
+        noteCopyFailure(source: source, destination: destination, code: error, phase: phase)
+    }
+
+    /// Diagnostics never decide whether a copy continues or which error wins.
+    func noteCopyFailure(source: String?, destination: String?, code: Int32, phase: String) {
+        let saved = Darwin.errno
+        defer { Darwin.errno = saved }
+        func display(_ path: String?) -> String {
+            String((path ?? "-").unicodeScalars.prefix(1024).map { scalar in
+                CharacterSet.controlCharacters.contains(scalar) ? "�" : String(scalar)
+            }.joined())
+        }
+        note("copy failure phase=\(phase) errno=\(code) uid=\(getuid()) euid=\(geteuid()) gid=\(getgid()) egid=\(getegid()) source=\(display(source)) destination=\(display(destination))")
     }
 
     func recordFailure(_ failure: FilaFailure) {
@@ -135,6 +150,7 @@ func filaFailsWriting(_ code: Int32) -> Bool {
 /// `copyfile(3)`'s state callback: progress on the way past, and the one place
 /// a cancellation can take effect.
 let filaCopyProgress: copyfile_callback_t = { what, stage, state, source, destination, context in
+    let callbackErrno = Darwin.errno
     guard let context else { return COPYFILE_CONTINUE }
     let tally = Unmanaged<JobTally>.fromOpaque(context).takeUnretainedValue()
     // A quit for cancellation records nothing: `FileJob.copyTree` reads the
@@ -146,10 +162,19 @@ let filaCopyProgress: copyfile_callback_t = { what, stage, state, source, destin
     // An error stage stops the walk. Answering CONTINUE here is what turns a
     // partial copy into a reported success — see `JobTally.failure`.
     if stage == COPYFILE_ERR || what == COPYFILE_RECURSE_ERROR {
+        var sourceFD: Int32 = -1
+        var destinationFD: Int32 = -1
+        if let state {
+            _ = copyfile_state_get(state, UInt32(COPYFILE_STATE_SRC_FD), &sourceFD)
+            _ = copyfile_state_get(state, UInt32(COPYFILE_STATE_DST_FD), &destinationFD)
+        }
         tally.recordCopyFailure(
             source: source.map { String(cString: $0) },
             destination: destination.map { String(cString: $0) },
+            code: callbackErrno,
+            phase: "callback what=\(what) stage=\(stage) sourceFD=\(sourceFD) destinationFD=\(destinationFD)",
         )
+        Darwin.errno = callbackErrno
         return COPYFILE_QUIT
     }
 

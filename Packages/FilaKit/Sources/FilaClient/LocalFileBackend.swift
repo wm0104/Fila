@@ -35,10 +35,13 @@ public class LocalFileBackend: FileBackend {
         public var inboxDirectory: String?
         /// The volume whose trash the unprivileged backend shows.
         public var trashVolume: String
+        /// Matches the in-process service; ignored for daemon and container places.
+        public var privateTrashBase: String?
 
-        public init(inboxDirectory: String? = nil, trashVolume: String = "/private/var") {
+        public init(inboxDirectory: String? = nil, trashVolume: String = "/private/var", privateTrashBase: String? = LocalFileService.privateTrashBase) {
             self.inboxDirectory = inboxDirectory
             self.trashVolume = trashVolume
+            self.privateTrashBase = privateTrashBase
         }
     }
 
@@ -525,8 +528,11 @@ public class LocalFileBackend: FileBackend {
 
     /// Matches the backend's trash: under a relocated bootstrap, otherwise
     /// under the configured volume.
-    public func trashDirectory(backend: LocalBackend) -> String {
-        LocalFileBackend.trashDirectory(backend: backend, volume: environment.trashVolume)
+    public func trashDirectory(backend: LocalBackend, volumeMountPoint: String? = nil) -> String {
+        if case .local(.user) = backend, let base = environment.privateTrashBase {
+            return FilaTrash.directory(under: base)
+        }
+        return LocalFileBackend.trashDirectory(backend: backend, volume: volumeMountPoint ?? environment.trashVolume)
     }
 
     /// The trash for `volume` — the data volume for the sidebar, a mount

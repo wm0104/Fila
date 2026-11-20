@@ -94,14 +94,14 @@ public final class FileJob: @unchecked Sendable {
     /// different things — how far along, versus what was found — and a search
     /// that finds nothing still reports progress and still completes.
     ///
-    /// `note` is a line for the log from an archive job — a member skipped,
-    /// a helper that died — that no outcome code carries.
+    /// `note` is a failure detail for copying, or a line from an archive job —
+    /// a member skipped, a helper that died — that no outcome code carries.
     public func run(
         report: @escaping (JobProgress) -> Void,
         matches: @escaping (SearchBatch) -> Void = { _ in },
         note: @escaping (String) -> Void = { _ in },
     ) -> FilaFailure {
-        let tally = JobTally(job: self, report: report)
+        let tally = JobTally(job: self, report: report, note: note)
         do {
             if request.kind.isArchive {
                 return try archive(report: report, note: note)
@@ -571,6 +571,7 @@ public final class FileJob: @unchecked Sendable {
             try verifyDirectory(current, descriptor: into)
             try operations.discardTemporary(FilaPath.join(current, temporaryName))
         }
+        var phase = "validate-publication"
         do {
             try validatePublication()
             // A file or a link is cloned whole: instant on APFS, no space. A
@@ -593,8 +594,11 @@ public final class FileJob: @unchecked Sendable {
             var sourceMetadata = stat()
             let sourceKnown = lstat(source, &sourceMetadata) == 0
             let isFolder = sourceKnown && sourceMetadata.st_mode & S_IFMT == S_IFDIR
+            phase = "clone"
             var cloned = !isFolder && cloneWhole()
+            let cloneErrno = !isFolder && !cloned ? Darwin.errno : 0
             if cloned, sourceKnown {
+                phase = "restore-setid"
                 // clonefile(2) clears setuid and setgid on a file too.
                 try filaRestoreSetID(of: temporaryName, in: into, path: temporary, source: sourceMetadata)
             }
@@ -604,6 +608,7 @@ public final class FileJob: @unchecked Sendable {
                 // held folder, the copy lands somewhere else, the lookup below
                 // finds nothing under the temporary's name, and nothing is
                 // published.
+                phase = "copyfile clone_errno=\(cloneErrno)"
                 do {
                     try copyTree(source, to: temporary, tally: tally)
                 } catch let failure as FilaFailure where isFolder && failure.systemError == ENOTSUP {
@@ -627,27 +632,35 @@ public final class FileJob: @unchecked Sendable {
             // Like AtomicReplace, defer flags that would prohibit the publication
             // rename until the new item has reached its final name.
             var metadata = stat()
+            phase = "temporary-metadata"
             try filaCheck(temporary) { fstatat(into, temporaryName, &metadata, AT_SYMLINK_NOFOLLOW) }
             let immovable = UInt32(UF_IMMUTABLE | SF_IMMUTABLE | UF_APPEND | SF_APPEND)
             if metadata.st_flags & immovable != 0 {
                 try operations.requireUnshared(metadata, path: temporary)
                 try filaSetFlags(metadata.st_flags & ~immovable, of: temporaryName, in: into, path: temporary)
             }
+            phase = "prepare"
             try prepare(temporary)
             if isCancelled {
                 throw FilaFailure(code: .cancelled, path: source)
             }
+            phase = "validate-publication"
             try validatePublication()
+            phase = "publish-rename"
             try filaCheck(target) {
                 renameatx_np(into, temporaryName, into, targetName, overwrite ? 0 : UInt32(RENAME_EXCL))
             }
             if metadata.st_flags & immovable != 0 {
+                phase = "restore-published-flags"
                 try filaSetFlags(metadata.st_flags, of: targetName, in: into, path: target)
             }
             if cloned {
                 tally.finishedItem()
             }
         } catch var failure as FilaFailure {
+            if request.kind == .copy, failure.code != .cancelled, tally.failure == nil {
+                tally.noteCopyFailure(source: source, destination: target, code: failure.systemError, phase: phase)
+            }
             try discard()
             // The temporary is this job's own hidden name; the user chose the
             // target, and a failure about the destination names that.
@@ -716,6 +729,7 @@ public final class FileJob: @unchecked Sendable {
         let flags = COPYFILE_ALL | COPYFILE_RECURSIVE | COPYFILE_NOFOLLOW | COPYFILE_EXCL | COPYFILE_DATA_SPARSE
             | COPYFILE_CLONE
         let result = copyfile(source, target, state, copyfile_flags_t(flags))
+        let copyErrno = Darwin.errno
         // What the callback saw comes first: it stopped the walk deliberately,
         // and the errno a quit leaves behind says nothing useful — from a
         // recursion stage it is 0, which would read as a failure with no reason.
@@ -726,7 +740,7 @@ public final class FileJob: @unchecked Sendable {
             if isCancelled {
                 throw FilaFailure(code: .cancelled, path: source)
             }
-            let code = Darwin.errno
+            let code = copyErrno
             throw FilaFailure(errno: code, path: filaFailsWriting(code) ? target : source)
         }
     }

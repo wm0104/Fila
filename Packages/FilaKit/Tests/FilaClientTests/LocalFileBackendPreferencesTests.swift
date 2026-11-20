@@ -326,7 +326,7 @@ struct LocalFileBackendPreferencesTests {
             displayName: "Scratch",
             artworkName: "folder",
             storage: MemoryStorage(),
-            environment: .init(inboxDirectory: inbox, trashVolume: scratch.root),
+            environment: .init(inboxDirectory: inbox, trashVolume: scratch.root, privateTrashBase: nil),
             defaultFavorites: [],
         )
         // The unprivileged full root: no bootstrap row, trash on the volume.
