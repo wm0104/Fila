@@ -59,6 +59,27 @@ struct ThumbnailTests {
         }
     }
 
+    /// Listing/properties thumbnails must not become another active HTML
+    /// renderer. This checks the public nil/icon result, not WebKit traffic.
+    @Test(arguments: ["html", "htm", "HTML", "HTM"])
+    func `HTML thumbnails leave the file type icon in place`(_ fileExtension: String) async throws {
+        try await withScratchAsync { directory in
+            let url = directory.appendingPathComponent("page.\(fileExtension)")
+            let bytes = Data("<!doctype html><html><body><h1>中文</h1><script>document.body.textContent = 'rendered';</script></body></html>".utf8)
+            try bytes.write(to: url)
+            #expect(FileFormat.detect(head: bytes, name: url.lastPathComponent) == .html)
+            let size = try byteCount(of: url)
+            try #require(size > 0)
+            let opens = Counter()
+            let image = await ThumbnailService().thumbnail(
+                path: url.path, modified: 1, byteCount: size, maxPixelSize: 512,
+                open: { await opens.bump(); return try openForReading(url) },
+            )
+            #expect(image == nil)
+            #expect(await opens.value == 1, "exercise a real descriptor, not an early size/cache refusal")
+        }
+    }
+
     @Test
     func `Full image previews downsample an ordinary large image before display`() throws {
         try withScratch { directory in

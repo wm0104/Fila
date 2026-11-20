@@ -347,6 +347,10 @@ public actor ThumbnailService {
             let copy = dup(descriptor)
             guard copy >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
             return await DescriptorAsset(descriptor: copy, name: name).frame(maxPixelSize: maxPixelSize).map { ($0, .center) }
+        case .html:
+            // Active HTML belongs only in the permission-controlled viewer;
+            // background browsing keeps the existing file-type artwork.
+            return nil
         case .audio, .propertyList, .machO, .archive, .document, .sqlite, .text, .binary:
             // Audio artwork is a real thumbnail and deliberately absent: it
             // means loading the asset's metadata for every track in a folder,
