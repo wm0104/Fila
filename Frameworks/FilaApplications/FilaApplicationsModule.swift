@@ -77,5 +77,9 @@ final class ApplicationCapabilityProxy: ApplicationCapability {
         await backend?.openInTrollStore(packageAt: url) ?? .unavailable
     }
 
+    func openInSileo(packageAt url: URL) async -> TrollStoreHandoffOutcome {
+        await backend?.openInSileo(packageAt: url) ?? .unavailable
+    }
+
     struct ApplicationsUnavailable: Error {}
 }

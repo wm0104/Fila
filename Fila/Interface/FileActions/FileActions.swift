@@ -208,7 +208,8 @@ final class FileActions {
                 confirm { self.share([path]) }
             },
         ] : []
-        let opening: [UIMenuElement] = shareSheet + run + install
+        let sileo = sileoAction(path, node: node, confirm: confirm).map { [$0] } ?? []
+        let opening: [UIMenuElement] = shareSheet + sileo + run + install
         let destructive: [UIMenuElement] = [
             UIAction(
                 title: Self.deleteTitle,

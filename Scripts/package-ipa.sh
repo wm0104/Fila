@@ -88,6 +88,7 @@ rm -f "$payload_app/embedded.mobileprovision"
 
 bash "$(dirname "$0")/sign-extensions.sh" "$payload_app" "$kind"
 if [[ "$kind" == tipa ]]; then
+    /usr/libexec/PlistBuddy -c 'Add :FilaOffersSileoOpen bool true' "$payload_app/Info.plist"
     template="$app_entitlements"
 else
     template="$(dirname "$0")/../Packaging/AppGroup.entitlements"

@@ -14,11 +14,12 @@ import tempfile
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = ROOT / "Scripts"
 if len(sys.argv) != 3:
-    sys.exit("usage: test-packaging.py <full products> <sandboxed products>")
+    sys.exit("usage: test-packaging.py <full products> <sandboxed products> | --tipa-only <full products>")
+tipa_only = sys.argv[1] == "--tipa-only"
 # The .deb and .tipa come out of the full build, the .ipa out of the
 # sandboxed one; each packager refuses the other's directory.
-products = Path(sys.argv[1]).resolve()
-sandboxed = Path(sys.argv[2]).resolve()
+products = Path(sys.argv[2] if tipa_only else sys.argv[1]).resolve()
+sandboxed = None if tipa_only else Path(sys.argv[2]).resolve()
 version = subprocess.check_output(["make", "--no-print-directory", "print-version"], cwd=ROOT, text=True).strip()
 
 
@@ -27,6 +28,48 @@ def run(args, *, success=True, env=None):
     if (result.returncode == 0) != success:
         raise AssertionError(result.stdout)
     return result.stdout
+
+
+def test_sileo_tipa(products, work):
+    info_path = products / "Fila.app/Info.plist"
+    full_info = info_path.read_bytes()
+    assert "FilaOffersSileoOpen" not in plistlib.loads(full_info)
+    run(["python3", SCRIPTS / "build-package-inputs.py", "verify", products])
+    tipa = work / "good.tipa"
+    run(["bash", SCRIPTS / "package-ipa.sh", products / "Fila.app", "tipa", tipa, version, ROOT / "Packaging/Fila.entitlements"])
+    assert info_path.read_bytes() == full_info
+    run(["python3", SCRIPTS / "build-package-inputs.py", "verify", products])
+    with zipfile.ZipFile(tipa) as archive:
+        archive.extractall(work / "tipa-payload")
+    app = work / "tipa-payload/Payload/Fila.app"
+    payload_info = app / "Info.plist"
+    original = payload_info.read_bytes()
+    info = plistlib.loads(original)
+    assert info["FilaOffersSileoOpen"] is True
+    verifier = ["python3", SCRIPTS / "verify-payload.py", app, "tipa", version]
+    run(verifier)
+    for value in (None, False, 1, "true"):
+        invalid = dict(info)
+        if value is None:
+            invalid.pop("FilaOffersSileoOpen")
+        else:
+            invalid["FilaOffersSileoOpen"] = value
+        payload_info.write_bytes(plistlib.dumps(invalid))
+        assert "FilaOffersSileoOpen" in run(verifier, success=False)
+    payload_info.write_bytes(original)
+    for kind in ("ipa", "deb"):
+        args = ["python3", SCRIPTS / "verify-payload.py", app, kind, version]
+        if kind == "deb":
+            args += [products / "filad", products / "fila-archive"]
+        assert "FilaOffersSileoOpen" in run(args, success=False)
+    print("PASS Sileo action belongs only to the TIPA copy; original full product unchanged")
+
+
+if tipa_only:
+    with tempfile.TemporaryDirectory(prefix="fila-tipa-package-test-") as workspace:
+        test_sileo_tipa(products, Path(workspace))
+    print("TIPA packaging regression tests passed.")
+    sys.exit(0)
 
 
 with tempfile.TemporaryDirectory(prefix="fila-package-test-") as workspace:
@@ -56,6 +99,8 @@ with tempfile.TemporaryDirectory(prefix="fila-package-test-") as workspace:
     assert "source differs" in output
     print("PASS stale source receipt rejected")
 
+    test_sileo_tipa(products, work)
+
     good = work / "good.ipa"
     run(["bash", SCRIPTS / "package-ipa.sh", sandboxed / "Fila.app", "ipa", good, version])
     # The full build is not the sandboxed archive, and its directory says so.
@@ -82,6 +127,11 @@ with tempfile.TemporaryDirectory(prefix="fila-package-test-") as workspace:
     info_path = app / "Info.plist"
     original_info = info_path.read_bytes()
     info = plistlib.loads(original_info)
+    assert "FilaOffersSileoOpen" not in info
+    info["FilaOffersSileoOpen"] = False
+    info_path.write_bytes(plistlib.dumps(info))
+    assert "FilaOffersSileoOpen" in run(verifier, success=False)
+    info.pop("FilaOffersSileoOpen")
     info["CFBundleVersion"] = "999999"
     info_path.write_bytes(plistlib.dumps(info))
     result = run(verifier, success=False)
