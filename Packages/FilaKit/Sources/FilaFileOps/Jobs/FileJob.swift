@@ -218,6 +218,62 @@ public final class FileJob: @unchecked Sendable {
             }
         }
 
+        // A merge must not write into any selected source, including when
+        // the destination is an ancestor of it or belongs to another root.
+        func validateCopyOverlap() throws {
+            for target in targets {
+                guard !sources.contains(where: {
+                    $0 == target || FilaGuard.isAncestor(target, of: $0) || FilaGuard.isAncestor($0, of: target)
+                }) else {
+                    throw FilaFailure(code: .invalidRequest, systemError: EINVAL, path: target, reason: .overlappingSources)
+                }
+            }
+        }
+        if request.kind == .copy { try validateCopyOverlap() }
+
+        var copyDirectory: Int32 = -1
+        defer { if copyDirectory >= 0 { close(copyDirectory) } }
+        // filad has a 6 MB jetsam limit. Keep compact identities, cap both
+        // dictionary entries and retained UTF-8 keys, and refuse before writes
+        // rather than silently dropping an approved directory's identity.
+        var directorySnapshots: [String: (device: dev_t, inode: ino_t)] = [:]
+        var snapshotPathBytes = 0
+        func validateCopyDirectory() throws {
+            try validateCopyOverlap()
+            if let target = targets.first {
+                try verifyDirectory(FilaPath.directory(of: target), descriptor: copyDirectory)
+            }
+        }
+        func validateSnapshot(_ path: String, _ current: stat?) throws {
+            guard let previous = directorySnapshots[path] else { return }
+            guard let current, current.st_mode & S_IFMT == S_IFDIR,
+                  current.st_dev == previous.device, current.st_ino == previous.inode else {
+                throw FilaFailure(errno: EAGAIN, path: path)
+            }
+        }
+        if request.kind == .copy, request.overwrite, let target = targets.first {
+            // Pin before the first report, not after a callback may have
+            // exchanged the chosen directory for a different real directory.
+            copyDirectory = try filaOpenDirectory(FilaPath.directory(of: target))
+            for (source, target) in zip(sources, targets) {
+                try copyMerging(source, to: target, tally: nil, validateParents: validateCopyDirectory) { path, metadata in
+                    guard let metadata, metadata.st_mode & S_IFMT == S_IFDIR else { return }
+                    if directorySnapshots[path] != nil {
+                        try validateSnapshot(path, metadata)
+                        return
+                    }
+                    // Only visited directories are retained: intersections and
+                    // new subtree roots, never the contents of a new subtree.
+                    let bytes = path.utf8.count
+                    guard directorySnapshots.count < 1024, bytes <= 128 * 1024 - snapshotPathBytes else {
+                        throw FilaFailure(errno: ENOMEM, path: path)
+                    }
+                    directorySnapshots[path] = (metadata.st_dev, metadata.st_ino)
+                    snapshotPathBytes += bytes
+                }
+            }
+        }
+
         for (index, source) in sources.enumerated() {
             if isCancelled {
                 throw FilaFailure(code: .cancelled, path: source)
@@ -227,7 +283,15 @@ public final class FileJob: @unchecked Sendable {
                 throw FilaFailure(code: .cancelled, path: source)
             }
             switch request.kind {
-            case .copy: try copy(source, to: targets[index], overwrite: request.overwrite, tally: tally)
+            case .copy:
+                if request.overwrite {
+                    try copyMerging(
+                        source, to: targets[index], tally: tally,
+                        validateParents: validateCopyDirectory, inspect: validateSnapshot,
+                    )
+                } else {
+                    try copy(source, to: targets[index], overwrite: false, tally: tally)
+                }
             case .move: try move(source, to: targets[index], overwrite: request.overwrite, tally: tally)
             case .restore:
                 try move(source, to: targets[index], overwrite: false, tally: tally)
@@ -283,7 +347,13 @@ public final class FileJob: @unchecked Sendable {
             throw FilaFailure(code: .invalidRequest, systemError: EINVAL, path: directory, reason: .insideSource)
         }
 
-        let target = try operations.resolveForWrite(FilaPath.join(directory, FilaPath.name(of: source)))
+        let expected = FilaPath.join(directory, FilaPath.name(of: source))
+        let target = try operations.resolveForWrite(expected)
+        // Merge children already have canonical parents. Never approve a new
+        // spelling reached through an ancestor swapped since the last check.
+        guard request.kind != .copy || target == expected else {
+            throw FilaFailure(errno: ELOOP, path: expected)
+        }
         var sourceMetadata = stat()
         try filaCheck(source) { lstat(source, &sourceMetadata) }
         var targetMetadata = stat()
@@ -306,13 +376,16 @@ public final class FileJob: @unchecked Sendable {
         }
         // Like cp, reject a file/folder collision before asking to replace it.
         // Use lstat: replacing a symlink must still replace the link itself.
-        guard (sourceMetadata.st_mode & S_IFMT == S_IFDIR) == (targetMetadata.st_mode & S_IFMT == S_IFDIR) else {
+        let sameKinds = request.kind == .copy
+            ? sourceMetadata.st_mode & S_IFMT == targetMetadata.st_mode & S_IFMT
+            : (sourceMetadata.st_mode & S_IFMT == S_IFDIR) == (targetMetadata.st_mode & S_IFMT == S_IFDIR)
+        guard sameKinds else {
             throw FilaFailure(code: .invalidRequest, systemError: EINVAL, path: target, reason: .differentItemKinds)
         }
         guard request.overwrite else {
             throw FilaFailure(code: .operationFailed, systemError: EEXIST, path: target)
         }
-        if targetMetadata.st_mode & S_IFMT == S_IFDIR {
+        if request.kind != .copy, targetMetadata.st_mode & S_IFMT == S_IFDIR {
             guard let entries = opendir(target) else { throw FilaFailure(errno: Darwin.errno, path: target) }
             defer { closedir(entries) }
             Darwin.errno = 0
@@ -327,26 +400,179 @@ public final class FileJob: @unchecked Sendable {
         return target
     }
 
+    /// Only existing directory intersections are enumerated here. Each new
+    /// subtree or leaf still goes through the metadata-preserving bulk copy.
+    /// A nil tally inspects all discoverable conflicts before the batch writes.
+    private func copyMerging(
+        _ source: String,
+        to destination: String,
+        tally: JobTally?,
+        validateParents: () throws -> Void = {},
+        inspect: (String, stat?) throws -> Void = { _, _ in },
+    ) throws {
+        if isCancelled { throw FilaFailure(code: .cancelled, path: source) }
+        try validateParents()
+        let sourceParent = FilaPath.directory(of: source)
+        let destinationParent = FilaPath.directory(of: destination)
+        let from = try filaOpenDirectory(sourceParent)
+        defer { close(from) }
+        let into = try filaOpenDirectory(destinationParent)
+        defer { close(into) }
+
+        func validate() throws {
+            try validateParents()
+            try verifyDirectory(sourceParent, descriptor: from)
+            try verifyDirectory(destinationParent, descriptor: into)
+            guard try target(in: destinationParent, for: source) == destination else {
+                throw FilaFailure(errno: ELOOP, path: destination)
+            }
+            try verifyDirectory(sourceParent, descriptor: from)
+            try verifyDirectory(destinationParent, descriptor: into)
+        }
+        try validate()
+        var original = stat(), existing = stat()
+        try filaCheck(source) { fstatat(from, FilaPath.name(of: source), &original, AT_SYMLINK_NOFOLLOW) }
+        let occupied = fstatat(into, FilaPath.name(of: destination), &existing, AT_SYMLINK_NOFOLLOW) == 0
+        if !occupied, Darwin.errno != ENOENT { throw FilaFailure(errno: Darwin.errno, path: destination) }
+        try inspect(source, original)
+        try inspect(destination, occupied ? existing : nil)
+        guard occupied, original.st_mode & S_IFMT == S_IFDIR, existing.st_mode & S_IFMT == S_IFDIR else {
+            guard let tally else { return }
+            tally.beginItem(source)
+            if isCancelled { throw FilaFailure(code: .cancelled, path: source) }
+            try validate()
+            func validateItem() throws {
+                try validate()
+                var current = stat()
+                try filaCheck(source) { fstatat(from, FilaPath.name(of: source), &current, AT_SYMLINK_NOFOLLOW) }
+                guard current.st_dev == original.st_dev, current.st_ino == original.st_ino,
+                      current.st_mode & S_IFMT == original.st_mode & S_IFMT else {
+                    throw FilaFailure(errno: EAGAIN, path: source)
+                }
+                if original.st_mode & S_IFMT == S_IFDIR {
+                    var appeared = stat()
+                    if fstatat(into, FilaPath.name(of: destination), &appeared, AT_SYMLINK_NOFOLLOW) == 0 {
+                        // A directory appearing after the merge decision must
+                        // not be replaced wholesale, even when it is empty.
+                        throw FilaFailure(errno: EAGAIN, path: destination)
+                    }
+                    guard Darwin.errno == ENOENT else { throw FilaFailure(errno: Darwin.errno, path: destination) }
+                }
+            }
+            try copy(
+                source, to: destination, overwrite: true, tally: tally,
+                destinationDescriptor: into, validatePublication: validateItem,
+            )
+            return
+        }
+
+        let sourceDirectory = try filaOpenDirectory(source)
+        // fdopendir takes ownership only on success.
+        guard let entries = fdopendir(sourceDirectory) else {
+            let code = Darwin.errno
+            close(sourceDirectory)
+            throw FilaFailure(errno: code, path: source)
+        }
+        defer { closedir(entries) }
+        let destinationDirectory = try filaOpenDirectory(destination)
+        defer { close(destinationDirectory) }
+        var openedSource = stat(), openedDestination = stat()
+        try filaCheck(source) { fstat(sourceDirectory, &openedSource) }
+        try filaCheck(destination) { fstat(destinationDirectory, &openedDestination) }
+        guard openedSource.st_dev == original.st_dev, openedSource.st_ino == original.st_ino,
+              openedDestination.st_dev == existing.st_dev, openedDestination.st_ino == existing.st_ino else {
+            throw FilaFailure(errno: EAGAIN, path: destination)
+        }
+        func validateDirectories() throws {
+            try validate()
+            try verifyDirectory(source, descriptor: sourceDirectory)
+            try verifyDirectory(destination, descriptor: destinationDirectory)
+        }
+        while true {
+            if isCancelled { throw FilaFailure(code: .cancelled, path: source) }
+            Darwin.errno = 0
+            guard let entry = readdir(entries) else {
+                guard Darwin.errno == 0 else { throw FilaFailure(errno: Darwin.errno, path: source) }
+                break
+            }
+            let name = filaText(entry.pointee.d_name)
+            if name == "." || name == ".." { continue }
+            try validateDirectories()
+            try copyMerging(
+                FilaPath.join(source, name),
+                to: FilaPath.join(destination, name),
+                tally: tally,
+                validateParents: validateDirectories,
+                inspect: inspect,
+            )
+        }
+    }
+
+    /// Reopening refuses links in any ancestor; identity also catches a real
+    /// directory exchanged for another after a progress callback.
+    private func verifyDirectory(_ path: String, descriptor: Int32) throws {
+        let current = try filaOpenDirectory(path)
+        defer { close(current) }
+        var pinned = stat(), now = stat()
+        try filaCheck(path) { fstat(descriptor, &pinned) }
+        try filaCheck(path) { fstat(current, &now) }
+        guard pinned.st_dev == now.st_dev, pinned.st_ino == now.st_ino else {
+            throw FilaFailure(errno: EAGAIN, path: path)
+        }
+    }
+
     private func copy(
         _ source: String,
         to target: String,
         overwrite: Bool,
         tally: JobTally,
+        destinationDescriptor: Int32? = nil,
+        validatePublication: () throws -> Void = {},
         prepare: (String) throws -> Void = { _ in },
     ) throws {
         // Publish only a complete copy. Cancellation or a failed read leaves
         // the previous destination intact, including when overwrite was approved.
+        try validatePublication()
         let (directory, targetName) = filaSplit(target)
         let temporaryName = ".fila-copy-\(UUID().uuidString)"
-        let temporary = try operations.resolveForWrite(FilaPath.join(directory, temporaryName))
+        let expectedTemporary = FilaPath.join(directory, temporaryName)
+        let temporary = try operations.resolveForWrite(expectedTemporary)
+        guard destinationDescriptor == nil || temporary == expectedTemporary else {
+            throw FilaFailure(errno: ELOOP, path: target)
+        }
         // The destination folder, opened again now and held: an ancestor
         // swapped for a link since the guard decided fails here with ELOOP,
         // and every step below that names the temporary or the target is
         // relative to this descriptor, so the approved replacement lands on
         // the item the guard saw and on nothing else.
-        let into = try filaOpenDirectory(directory)
-        defer { close(into) }
+        let into = try destinationDescriptor ?? filaOpenDirectory(directory)
+        defer { if destinationDescriptor == nil { close(into) } }
+        func discard() throws {
+            guard destinationDescriptor != nil else {
+                return try operations.discardTemporary(temporary)
+            }
+            // A merge parent can have moved during a copyfile callback. Find
+            // our temporary through the held descriptor, not a replacement link.
+            var info = stat()
+            guard fstatat(into, temporaryName, &info, AT_SYMLINK_NOFOLLOW) == 0 else {
+                guard Darwin.errno == ENOENT else { throw FilaFailure(errno: Darwin.errno, path: target) }
+                return
+            }
+            if info.st_mode & S_IFMT != S_IFDIR {
+                if info.st_nlink == 1, info.st_flags != 0 {
+                    try filaSetFlags(0, of: temporaryName, in: into, path: target)
+                }
+                try filaCheck(target) { unlinkat(into, temporaryName, 0) }
+                return
+            }
+            var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+            try filaCheck(target) { fcntl(into, F_GETPATH, &buffer) }
+            let current = String(cString: buffer)
+            try verifyDirectory(current, descriptor: into)
+            try operations.discardTemporary(FilaPath.join(current, temporaryName))
+        }
         do {
+            try validatePublication()
             // A file or a link is cloned whole: instant on APFS, no space. A
             // plain clone drops the source's ACLs, so CLONE_ACL asks for them;
             // a kernel older than that flag refuses it with EINVAL, and gets
@@ -389,7 +615,7 @@ public final class FileJob: @unchecked Sendable {
                     if isCancelled {
                         throw FilaFailure(code: .cancelled, path: source)
                     }
-                    try operations.discardTemporary(temporary)
+                    try discard()
                     cloned = cloneWhole()
                     guard cloned else { throw failure }
                     tally.forgetFailure()
@@ -411,6 +637,7 @@ public final class FileJob: @unchecked Sendable {
             if isCancelled {
                 throw FilaFailure(code: .cancelled, path: source)
             }
+            try validatePublication()
             try filaCheck(target) {
                 renameatx_np(into, temporaryName, into, targetName, overwrite ? 0 : UInt32(RENAME_EXCL))
             }
@@ -421,7 +648,7 @@ public final class FileJob: @unchecked Sendable {
                 tally.finishedItem()
             }
         } catch var failure as FilaFailure {
-            try operations.discardTemporary(temporary)
+            try discard()
             // The temporary is this job's own hidden name; the user chose the
             // target, and a failure about the destination names that.
             if let path = failure.path {
@@ -429,7 +656,7 @@ public final class FileJob: @unchecked Sendable {
             }
             throw failure
         } catch {
-            try operations.discardTemporary(temporary)
+            try discard()
             throw error
         }
     }

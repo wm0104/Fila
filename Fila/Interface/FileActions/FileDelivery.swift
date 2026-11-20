@@ -118,15 +118,19 @@ enum FileDelivery {
         let kind: OperationCenter.Kind = request.kind == .move ? .move : .copy
         let subtitle = OperationCenter.describe(request.sources, destination: request.destination)
         var outcome: FilaFailure
+        var merging = request.kind == .copy && request.overwrite
         do {
             outcome = try await center.awaitJob(request, kind: kind, subtitle: subtitle, feedback: .silent)
             if outcome.systemError == EEXIST, !request.overwrite {
                 guard await confirmReplacement(
-                    String.LocalizationValue("Items with the same names will be replaced, not moved to the trash. This cannot be undone. Non-empty folders cannot be replaced."),
+                    request.kind == .copy
+                        ? String.LocalizationValue("Files with the same names will be replaced; this cannot be undone. Folders with the same names are merged, and what they already hold is kept.")
+                        : String.LocalizationValue("Items with the same names will be replaced, not moved to the trash. This cannot be undone. Non-empty folders cannot be replaced."),
                     from: presenter,
                 ) else { return false }
                 var replacement = request
                 replacement.overwrite = true
+                merging = replacement.kind == .copy
                 outcome = try await center.awaitJob(replacement, kind: kind, subtitle: subtitle, feedback: .silent)
             }
         } catch let failure as FilaFailure {
@@ -135,8 +139,8 @@ enum FileDelivery {
             outcome = FilaFailure(code: .operationFailed)
         }
         guard outcome.code != .success else { return true }
-        if outcome.code != .cancelled {
-            report(outcome, mode: request.kind == .move ? .move : .copy, batch: request.sources.count > 1)
+        if outcome.code != .cancelled || merging {
+            report(outcome, mode: request.kind == .move ? .move : .copy, batch: request.sources.count > 1 || merging)
         }
         return false
     }

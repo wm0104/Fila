@@ -210,14 +210,14 @@ struct JobTests {
         #expect(metadata(of: alias).map { FileKind(modeBits: $0.st_mode) } == .symbolicLink)
     }
 
-    @Test(arguments: [FilaJobKind.copy, .move])
-    func `An approved overwrite never merges a nonempty destination directory`(_ kind: FilaJobKind) throws {
+    @Test
+    func `An approved move never merges a nonempty destination directory`() throws {
         let source = scratch.directory("tree")
         scratch.file("tree/new.txt", contents: "new")
         let destination = scratch.directory("destination")
         scratch.directory("destination/tree")
         scratch.file("destination/tree/old.txt", contents: "old")
-        #expect(run(JobRequest(kind: kind, sources: [source], destination: destination, overwrite: true)).systemError == ENOTEMPTY)
+        #expect(run(JobRequest(kind: .move, sources: [source], destination: destination, overwrite: true)).systemError == ENOTEMPTY)
         #expect(try FileManager.default.contentsOfDirectory(atPath: source) == ["new.txt"])
         #expect(try FileManager.default.contentsOfDirectory(atPath: scratch.path("destination/tree")) == ["old.txt"])
     }
