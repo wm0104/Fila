@@ -49,13 +49,10 @@ final class FileActions {
         AppPreferences.shared.usesTrash && backendHasTrash
     }
 
-    /// False on the sandboxed backend, which has no trash to offer: its trash
-    /// would sit at the volume root, where the container cannot create a
-    /// folder — the sidebar shows no Trash there for the same reason. Every
-    /// delete there is the confirmed permanent one, whatever the setting says.
+    /// Only the daemon offers a trash. In-process TIPA and sandboxed access
+    /// use confirmed permanent deletion, regardless of the saved preference.
     static var backendHasTrash: Bool {
-        if case .local(reach: .container) = FileSession.shared.hello?.backend { return false }
-        return true
+        FileSession.shared.hello?.isPrivileged == true
     }
 
     /// Whether `directory` is the trash: where `FileJob` renames deleted items

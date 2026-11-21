@@ -119,31 +119,21 @@ public final class LocalFileService: LocalFileAccess, @unchecked Sendable {
         #endif
     }()
 
-    /// The in-process user's trash, not a packaging or root-capability claim.
-    /// Resolve Foundation's parent spelling, but never the private directory itself.
-    public static let privateTrashBase: String? = {
-        guard processReach == .user,
-              let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
-        return support.deletingLastPathComponent().resolvingSymlinksInPath()
-            .appendingPathComponent(support.lastPathComponent, isDirectory: true)
-            .appendingPathComponent("wiki.qaq.fila/Trash", isDirectory: true).path
-    }()
-
     /// A service that owns its streams — what a build with no privileged
     /// module runs on.
-    public convenience init(privateTrashBase: String? = LocalFileService.privateTrashBase) {
-        self.init(streams: FileEventStreams(), ownsStreams: true, privateTrashBase: privateTrashBase)
+    public convenience init() {
+        self.init(streams: FileEventStreams(), ownsStreams: true)
     }
 
     /// A service reporting into streams someone else owns — what the
     /// privileged link falls back to once its grace period is up, so the
     /// events land on the streams the app was already reading.
-    public convenience init(streams: FileEventStreams, privateTrashBase: String? = LocalFileService.privateTrashBase) {
-        self.init(streams: streams, ownsStreams: false, privateTrashBase: privateTrashBase)
+    public convenience init(streams: FileEventStreams) {
+        self.init(streams: streams, ownsStreams: false)
     }
 
-    private init(streams: FileEventStreams, ownsStreams: Bool, privateTrashBase: String?) {
-        operations = FileOperations(bootstrapRoot: "", privateTrashBase: Self.processReach == .user ? privateTrashBase : nil)
+    private init(streams: FileEventStreams, ownsStreams: Bool) {
+        operations = FileOperations(bootstrapRoot: "")
         self.streams = streams
         self.ownsStreams = ownsStreams
         FilaLog.info("running in-process, reach: \(reach)")
@@ -248,7 +238,12 @@ public final class LocalFileService: LocalFileAccess, @unchecked Sendable {
     }
 
     public func startJob(_ job: JobRequest) async throws -> LocalJobIdentifier {
-        try await run("startJob \(job.kind)") {
+        // No in-process trash, even when a caller bypasses the browser's menu.
+        // Refuse rather than silently turning a recoverable delete permanent.
+        guard !job.useTrash, job.kind != .restore else {
+            throw FilaFailure(errno: ENOTSUP, path: job.sources.first)
+        }
+        return try await run("startJob \(job.kind)") {
             let identifier = self.nextJobIdentifier
             self.nextJobIdentifier &+= 1
             let handle = LocalJobIdentifier(value: identifier)

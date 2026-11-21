@@ -12,6 +12,29 @@ The single idea the whole design hangs off: **`filad` opens files, it does not
 read them.** It hands the descriptor back over XPC and forgets it. Bytes flow
 between the app and the kernel with nothing in between.
 
+## ipa-dev build scope
+
+This branch's CI builds **one `.tipa`**, with its dSYMs and `SHA256SUMS`.
+It does not compile the sandboxed app, package an ordinary `.ipa` or `.deb`,
+or publish a release or Pages. `make compile` followed by
+`make _package-tipa` builds and verifies the full composition without invoking
+another wrapper. `Scripts/check-tipa-ci-packages.sh` rejects extra, stale or
+linked outputs before upload and after download; both checksum verification
+and the existing iOS-floor audit remain required.
+
+The standalone in-process backend has **no trash**, whether its reach is
+`.user` or `.container`: no sidebar place, no Use Trash switch, and browser
+and Shortcut deletes use the existing explicit permanent-delete confirmation.
+Old trash/restore job requests are refused, never silently made permanent.
+Removing this feature does not migrate or delete existing private trash data.
+The daemon's original trash is unchanged.
+
+The on-device Apelin workspace cannot run this repository's macOS/Xcode/Swift
+build. Use GitHub CI on `ipa-dev` for `make harness`, compilation and archive
+verification; the prepared device C/Objective-C toolchain is not a replacement
+for Xcode. Locally, `bash -n Scripts/check-tipa-ci-packages.sh` and layout
+fixtures can test only the artifact guard, not app compilation or behavior.
+
 ## Hard rules
 
 - **File operations are syscalls, never subprocesses.** No shell, no `cp`, no
@@ -132,7 +155,7 @@ between the app and the kernel with nothing in between.
   Explicit modes remain available for private staging and workspace directories.
   Apply new-file defaults before publication; replacing an existing file keeps
   that file’s metadata.
-- **Delete moves to the trash by default.** Same-volume `rename` into
+- **With `filad`, delete moves to the trash by default.** Same-volume `rename` into
   `<install root>/.fila-trash` on a restricted daemon, or
   `<volume mount point>/.fila-trash` otherwise, is instant and undoable; permanent
   delete is an explicit action, and the default is a setting. The names live in

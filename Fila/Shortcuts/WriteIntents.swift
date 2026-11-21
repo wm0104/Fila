@@ -201,7 +201,7 @@ struct DeleteItemIntent: AppIntent {
         // will actually be destroyed, not about the string that was typed.
         let asked = try IntentSupport.path(path)
         let target = try await IntentSupport.details(of: asked).path
-        // A backend with no trash (the sandboxed one) can only delete
+        // A backend with no trash (including the in-process TIPA) can only delete
         // permanently, as the browser does there: the confirmation says so,
         // so the default still never destroys anything without asking.
         let permanent = permanently || !FileActions.backendHasTrash

@@ -315,7 +315,7 @@ struct LocalFileBackendPreferencesTests {
     }
 
     @Test
-    func `Places follow the handshake: bootstrap only under a relocated daemon, trash always, presets ordered and hidden`() throws {
+    func `Places follow the handshake: trash only with a daemon, presets ordered and hidden`() throws {
         let scratch = LocalScratch()
         scratch.directory("var/mobile/Media/DCIM")
         scratch.directory("jb")
@@ -326,22 +326,23 @@ struct LocalFileBackendPreferencesTests {
             displayName: "Scratch",
             artworkName: "folder",
             storage: MemoryStorage(),
-            environment: .init(inboxDirectory: inbox, trashVolume: scratch.root, privateTrashBase: nil),
+            environment: .init(inboxDirectory: inbox, trashVolume: scratch.root),
             defaultFavorites: [],
         )
-        // The unprivileged full root: no bootstrap row, trash on the volume.
+        // The unprivileged full root has neither bootstrap nor trash.
         var rows = backend.availablePlaces(backend: .local(reach: .user))
         #expect(rows[.root]?.kind == .root)
         #expect(rows[.bootstrap] == nil)
         #expect(rows[.inbox]?.path?.description == "inbox")
         #expect(rows[.mobile] == nil, "/var/mobile is outside this root")
-        #expect(rows[.trash]?.kind == .trash)
-        #expect(backend.trashDirectory(backend: .local(reach: .user)).hasPrefix(scratch.root))
+        #expect(rows[.trash] == nil)
+        #expect(backend.trashDirectory(backend: .local(reach: .user)) == nil)
 
-        // A relocated daemon: the bootstrap row and the trash under it.
+        // A relocated daemon retains the bootstrap row and its own trash.
         rows = backend.availablePlaces(backend: .daemon(installRoot: scratch.path("jb")))
         #expect(rows[.bootstrap]?.path?.description == "jb")
-        #expect(backend.trashDirectory(backend: .daemon(installRoot: scratch.path("jb"))).hasPrefix(scratch.path("jb")))
+        #expect(rows[.trash]?.path?.description == "jb/.fila-trash")
+        #expect(backend.trashDirectory(backend: .daemon(installRoot: scratch.path("jb"))) == scratch.path("jb/.fila-trash"))
 
         // The bootstrap's own mobile: only under a relocated daemon, and
         // only once the folder exists.
@@ -358,10 +359,14 @@ struct LocalFileBackendPreferencesTests {
         rows = backend.availablePlaces(backend: .local(reach: .container))
         #expect(Set(rows.keys) == [.root, .inbox])
         #expect(rows[.root]?.kind == .home)
+        #expect(backend.trashDirectory(backend: .local(reach: .container)) == nil)
 
-        backend.handshakeLanded(LocalHello(protocolVersion: 1, backend: .local(reach: .user)))
+        backend.handshakeLanded(LocalHello(protocolVersion: 1, backend: .daemon(installRoot: "")))
         try backend.setPresetOrder([.trash, .inbox, .root])
         try backend.setPreset(.inbox, enabled: false)
         #expect(backend.sidebar().places.map(\.id) == [LocalFileBackend.placeID(.trash), LocalFileBackend.placeID(.root)])
+        backend.handshakeLanded(LocalHello(protocolVersion: 1, backend: .local(reach: .user)))
+        #expect(!backend.offersPreset(.trash))
+        #expect(backend.sidebar().places.map(\.id) == [LocalFileBackend.placeID(.root)])
     }
 }

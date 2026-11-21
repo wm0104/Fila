@@ -1,22 +1,12 @@
-name: Pages
+# ipa-dev must not deploy or refresh the production site. Retained for reference;
+# enabling deployment again requires a separately reviewed publishing change.
+name: Pages (disabled on ipa-dev)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - Documentation/Site/**
-      - .github/workflows/pages.yml
-  release:
-    types: [published, edited]
-  workflow_run:
-    workflows: [Release]
-    types: [completed]
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 # One live site: let a running deploy finish rather than cancelling it.
 concurrency:
@@ -25,7 +15,7 @@ concurrency:
 
 jobs:
   refresh-release:
-    if: github.event_name == 'release'
+    if: ${{ false }}
     runs-on: ubuntu-latest
     permissions:
       actions: write
@@ -37,7 +27,7 @@ jobs:
         run: gh workflow run pages.yml --ref main
 
   deploy:
-    if: github.event_name != 'release' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
+    if: ${{ false }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages

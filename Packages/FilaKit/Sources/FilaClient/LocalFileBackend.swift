@@ -33,15 +33,12 @@ public class LocalFileBackend: FileBackend {
     public struct Environment: Sendable {
         /// The shared Inbox, when the app has one. Offered as a place.
         public var inboxDirectory: String?
-        /// The volume whose trash the unprivileged backend shows.
+        /// The data volume whose trash a rootful daemon shows.
         public var trashVolume: String
-        /// Matches the in-process service; ignored for daemon and container places.
-        public var privateTrashBase: String?
 
-        public init(inboxDirectory: String? = nil, trashVolume: String = "/private/var", privateTrashBase: String? = LocalFileService.privateTrashBase) {
+        public init(inboxDirectory: String? = nil, trashVolume: String = "/private/var") {
             self.inboxDirectory = inboxDirectory
             self.trashVolume = trashVolume
-            self.privateTrashBase = privateTrashBase
         }
     }
 
@@ -513,7 +510,9 @@ public class LocalFileBackend: FileBackend {
         }
         offer(.mobile, "/var/mobile", .home)
         offer(.pictures, "/var/mobile/Media/DCIM", .pictures)
-        offer(.trash, trashDirectory(backend: backend), .trash, checked: false)
+        if let trash = trashDirectory(backend: backend) {
+            offer(.trash, trash, .trash, checked: false)
+        }
         return rows
     }
 
@@ -526,22 +525,17 @@ public class LocalFileBackend: FileBackend {
     /// The row id of the bootstrap's own `mobile`, beside the Mobile place.
     public static let bootstrapHomeID = placeID(.mobile) + ".bootstrap"
 
-    /// Matches the backend's trash: under a relocated bootstrap, otherwise
-    /// under the configured volume.
-    public func trashDirectory(backend: LocalBackend, volumeMountPoint: String? = nil) -> String {
-        if case .local(.user) = backend, let base = environment.privateTrashBase {
-            return FilaTrash.directory(under: base)
-        }
-        return LocalFileBackend.trashDirectory(backend: backend, volume: volumeMountPoint ?? environment.trashVolume)
+    /// The daemon's trash: under a relocated bootstrap, otherwise under the
+    /// configured volume. In-process access deliberately has no trash.
+    public func trashDirectory(backend: LocalBackend, volumeMountPoint: String? = nil) -> String? {
+        LocalFileBackend.trashDirectory(backend: backend, volume: volumeMountPoint ?? environment.trashVolume)
     }
 
     /// The trash for `volume` — the data volume for the sidebar, a mount
-    /// point for an item being put back from it.
-    public static func trashDirectory(backend: LocalBackend, volume: String) -> String {
-        if case let .daemon(installRoot) = backend, !installRoot.isEmpty {
-            return FilaTrash.directory(under: installRoot)
-        }
-        return FilaTrash.directory(under: volume)
+    /// point for an item being put back from it. No daemon means no trash.
+    public static func trashDirectory(backend: LocalBackend, volume: String) -> String? {
+        guard case let .daemon(installRoot) = backend else { return nil }
+        return FilaTrash.directory(under: installRoot.isEmpty ? volume : installRoot)
     }
 
     private func location(_ path: ServicePath) -> BackendLocation {

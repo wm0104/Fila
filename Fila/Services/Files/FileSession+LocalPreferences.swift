@@ -97,7 +97,7 @@ extension FileSession {
 
     /// The trash the live backend uses, once the handshake said which.
     var trashDirectory: String? {
-        hello.map { local.trashDirectory(backend: $0.backend) }
+        hello.flatMap { local.trashDirectory(backend: $0.backend) }
     }
 
     private func record(_ what: String, _ change: () throws -> Void) {

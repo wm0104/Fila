@@ -1,28 +1,9 @@
-# Tag vX.Y.Z → the packages CI built for the tagged commit, published.
-#
-# Nothing is tested or compiled here. The push of the commit to main ran
-# `ci.yml`: the host tests in one job and, beside them, the full and the
-# sandboxed composition each compiled, packaged and verified in a job of its
-# own, collected as the artifact `fila-<sha>`. The tag publishes that
-# artifact, and only once that run has succeeded: a failed test fails the
-# run, and the release with it. What ships is the file CI verified, not a
-# second build of the same commit.
-#
-# The commit says its version (`make set-version`, the release notes, then
-# the tag), and the packages CI built are named for it: when they are not
-# named for the tag, nothing is published.
-#
-# The tag and the branch usually arrive together, so the run may not exist
-# yet when this starts, and it is waited for. A commit that never reached
-# main has no run: dispatch CI on the tag (`gh workflow run ci.yml --ref
-# vX.Y.Z`), which is also the way back once the artifact is past its thirty
-# days, and re-run this.
-
-name: Release
+# ipa-dev is build-only. Keep this workflow for reference, but never publish
+# this development branch's TIPA-only artifacts as a four-package release.
+# Re-enabling publication requires a separately reviewed release design.
+name: Release (disabled on ipa-dev)
 
 on:
-  push:
-    tags: ["v[0-9]*.[0-9]*.[0-9]*"]
   workflow_dispatch:
 
 concurrency:
@@ -31,7 +12,7 @@ concurrency:
 
 jobs:
   publish:
-    if: github.ref_type == 'tag'
+    if: ${{ false }}
     runs-on: ubuntu-latest
     # Long enough to outlast a cold CI run: ten minutes of polling for it,
     # then a compile job that may take its full two hours.

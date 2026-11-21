@@ -38,7 +38,9 @@ enum GeneralSettingsMenu {
                 catch { FilaLog.error("preset not saved: \(error)") }
             }
         }
-        let trashAvailable = FileActions.backendHasTrash
+        let trash: [UIMenuElement] = FileActions.backendHasTrash ? [
+            toggle(String(localized: "Use Trash"), enabled: preferences.usesTrash) { preferences.usesTrash = $0 },
+        ] : []
         return [
             launch,
             toggle(String(localized: "Show Hidden Files"), enabled: session.showsHidden) {
@@ -47,11 +49,7 @@ enum GeneralSettingsMenu {
             toggle(String(localized: "Remember Recents"), enabled: preferences.recordsRecents) {
                 preferences.recordsRecents = $0
             },
-            toggle(
-                String(localized: "Use Trash"),
-                enabled: preferences.usesTrash && trashAvailable,
-                available: trashAvailable,
-            ) { preferences.usesTrash = $0 },
+        ] + trash + [
             toggle(String(localized: "Find Script Interpreters"), enabled: preferences.redirectsScriptInterpreters) {
                 preferences.redirectsScriptInterpreters = $0
             },

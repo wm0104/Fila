@@ -139,7 +139,7 @@ endif
 .PHONY: all help print-version print-build-number print-deb-path print-tipa-path \
 	print-ipa-path print-flavor \
 	set-version bump-build require-sdk check remove-stale harness build compile build-sandboxed compile-sandboxed sim vphone \
-	_build-ios _build-ios-sandboxed _package-deb _packages _packages-full _packages-sandboxed \
+	_build-ios _build-ios-sandboxed _package-deb _package-tipa _packages _packages-full _packages-sandboxed \
 	deb deb-roothide deb-rootless deb-all tipa ipa packages install clean
 
 all: packages
@@ -384,6 +384,10 @@ deb-all: build
 # .deb. No filad and no launchd job come with it — the app finds no Mach
 # service and does the work in-process.
 tipa: build
+	@$(MAKE) --no-print-directory _package-tipa
+
+# Package an already compiled full composition without building any other wrapper.
+_package-tipa:
 	"$(IPA_PACKAGER)" "$(APP_BUNDLE)" tipa "$(TIPA_OUTPUT)" "$(APP_VERSION)" "$(ENTITLEMENTS)"
 
 # The sandboxed composition, ad-hoc signed with only the standard App Group:

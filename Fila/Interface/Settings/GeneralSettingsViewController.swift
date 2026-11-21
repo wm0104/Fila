@@ -72,6 +72,7 @@ final class GeneralSettingsViewController: UITableViewController {
         switch Section(rawValue: section) {
         case .browsing: BrowsingRow.allCases.count
         case .presets: presets.count
+        case .fileOperations: FileActions.backendHasTrash ? 1 : 0
         default: 1
         }
     }
@@ -79,7 +80,7 @@ final class GeneralSettingsViewController: UITableViewController {
     override func tableView(_: UITableView, titleForHeaderInSection section: Int) -> String? {
         switch Section(rawValue: section) {
         case .browsing: String(localized: "Browsing")
-        case .fileOperations: String(localized: "File Operations")
+        case .fileOperations: FileActions.backendHasTrash ? String(localized: "File Operations") : nil
         case .scripts: String(localized: "Scripts")
         case .presets: String(localized: "Places")
         case nil: nil

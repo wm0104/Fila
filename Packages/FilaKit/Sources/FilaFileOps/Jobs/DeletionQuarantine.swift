@@ -24,13 +24,7 @@ enum DeletionQuarantine {
                 throw FilaFailure(errno: EROFS, path: source)
             }
         }
-        var candidates: [String]
-        if operations.privateTrashBase != nil, operations.writableRoot == nil {
-            // An unusable trash must not prevent an explicitly confirmed delete.
-            candidates = (try? operations.trashBase(volumeMountPoint: mount)).map { [$0] } ?? []
-        } else {
-            candidates = [try operations.trashBase(volumeMountPoint: mount)]
-        }
+        var candidates = [try operations.trashBase(volumeMountPoint: mount)]
         if boundary == nil { candidates.append(mount) }
         // A writable parent cannot hold the wrapper, but a trusted ancestor can.
         while true {
@@ -107,26 +101,9 @@ enum DeletionQuarantine {
         try filaCheck(wrapper) { unlinkat(anchor, name, AT_REMOVEDIR) }
     }
 
-    /// The user trash uses the same trusted-ancestor checks as permanent deletion.
-    /// Existing nodes are never repaired or followed through a link.
-    static func privateDirectory(_ path: String, create: Bool) throws -> Int32 {
-        let descriptor = try controlledDirectory(path, createMissing: create)
-        do {
-            var info = stat()
-            try filaCheck(path) { fstat(descriptor, &info) }
-            guard info.st_uid == geteuid(), info.st_mode & 0o7777 == 0o700 else {
-                throw FilaFailure(errno: EACCES, path: path)
-            }
-            return descriptor
-        } catch {
-            close(descriptor)
-            throw error
-        }
-    }
-
     /// Root and this backend's uid are trusted. A sticky writable ancestor
     /// protects a trusted child's name (not an arbitrary other user's child).
-    private static func controlledDirectory(_ path: String, createMissing: Bool = false) throws -> Int32 {
+    private static func controlledDirectory(_ path: String) throws -> Int32 {
         guard path.hasPrefix("/"), !path.utf8.contains(0),
               !path.split(separator: "/").contains(where: { $0 == "." || $0 == ".." }) else {
             throw FilaFailure(errno: EINVAL, path: path)
@@ -137,12 +114,6 @@ enum DeletionQuarantine {
             for component in [""] + components {
                 if !component.isEmpty {
                     var next = openat(current, component, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-                    if next < 0, errno == ENOENT, createMissing {
-                        if mkdirat(current, component, 0o700) != 0, errno != EEXIST {
-                            throw FilaFailure(errno: errno, path: path)
-                        }
-                        next = openat(current, component, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-                    }
                     let code = errno
                     if next < 0, code == EACCES {
                         next = openat(current, component, O_SEARCH | O_NOFOLLOW | O_CLOEXEC)
