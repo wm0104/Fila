@@ -98,12 +98,13 @@ jobs:
           version="$(make --no-print-directory print-version)"
           (cd build/Packages && shasum -a 256 "Fila_${version}.tipa" "Fila_${version}_dSYMs.zip" > SHA256SUMS)
           bash Scripts/check-tipa-ci-packages.sh build/Packages "$version"
+      # Upload once. Audits reuse these bytes; accept the artifact only when the run succeeds.
       - uses: actions/upload-artifact@v4
         with:
-          name: fila-tipa-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-build
+          name: fila-tipa-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-packages
           path: build/Packages/
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 30
 
   # Repeat the packaged image audit where older simulator Swift libraries exist.
   floor-audit:
@@ -115,7 +116,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: fila-tipa-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-build
+          name: fila-tipa-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-packages
           path: build/Packages/
       - name: Require exactly one TIPA with its symbols and checksums
         run: bash Scripts/check-tipa-ci-packages.sh build/Packages "$(make --no-print-directory print-version)"
@@ -146,9 +147,9 @@ jobs:
           unzip -q "build/Packages/Fila_${version}.tipa" -d "$unpacked"
           bash Scripts/audit-ios-floor.sh "$floor" "$unpacked/Payload/Fila.app"
 
-  # Only the exact outputs from this run and attempt can become the final artifact.
+  # Recheck the same artifact after all tests and audits; do not upload another copy.
   packages:
-    name: Collect the single TIPA
+    name: Verify the single TIPA
     needs: [test, compile, floor-audit]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -156,16 +157,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: fila-tipa-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-build
+          name: fila-tipa-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-packages
           path: build/Packages/
       - name: Require exactly one TIPA with its symbols and checksums
         run: bash Scripts/check-tipa-ci-packages.sh build/Packages "$(make --no-print-directory print-version)"
       - name: Verify checksums
         working-directory: build/Packages
         run: sha256sum --check SHA256SUMS
-      - uses: actions/upload-artifact@v4
-        with:
-          name: fila-tipa-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-packages
-          path: build/Packages/
-          if-no-files-found: error
-          retention-days: 30

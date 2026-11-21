@@ -20,7 +20,10 @@ or publish a release or Pages. `make compile` followed by
 `make _package-tipa` builds and verifies the full composition without invoking
 another wrapper. `Scripts/check-tipa-ci-packages.sh` rejects extra, stale or
 linked outputs before upload and after download; both checksum verification
-and the existing iOS-floor audit remain required.
+and the existing iOS-floor audit remain required. Upload the TIPA, symbols and
+checksums once as one shared `-packages` artifact. Later jobs download that same
+artifact for verification, never re-upload another copy. Accept it only from
+a successful workflow run.
 
 The standalone in-process backend has **no trash**, whether its reach is
 `.user` or `.container`: no sidebar place, no Use Trash switch, and browser

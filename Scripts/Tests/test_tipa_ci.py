@@ -108,7 +108,18 @@ class TipaWorkflowTests(unittest.TestCase):
         self.assertIn('run: sha256sum --check SHA256SUMS', source)
         self.assertIn('run: shasum -a 256 -c SHA256SUMS', source)
         self.assertIn('bash Scripts/audit-ios-floor.sh', source)
-        self.assertEqual(source.count('${{ github.run_attempt }}-build'), 3)
+        self.assertEqual(source.count('${{ github.run_attempt }}-packages'), 3)
+
+    def test_ci_uploads_one_shared_download_artifact(self):
+        source = (ROOT / '.github/workflows/ci.yml').read_text()
+        self.assertEqual(source.count('uses: actions/upload-artifact@'), 1,
+                         'The same TIPA must not be uploaded as both build and packages artifacts.')
+        self.assertNotIn('${{ github.run_attempt }}-build', source)
+        artifact_names = [line.strip() for line in source.splitlines()
+                          if line.strip().startswith('name: fila-tipa-')]
+        self.assertEqual(len(artifact_names), 3, 'One upload and two validation downloads are required.')
+        self.assertEqual(len(set(artifact_names)), 1, 'Every job must reuse the same artifact.')
+        self.assertIn('retention-days: 30', source)
 
     def test_packaging_existing_products_does_not_build_other_wrappers(self):
         makefile = (ROOT / 'Makefile').read_text()
