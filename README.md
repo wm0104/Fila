@@ -38,7 +38,7 @@ When sideloading, provision the same App Group for Fila, its Files extension, an
 - **Archives**: Browse and extract ZIP, TAR, 7z, RAR, xar, cpio, ISO, CAB, LHA, and ar; 7z and RAR are read-only. Create ZIP and TAR archives, with gzip, bzip2, xz, LZMA, lzip, Zstandard, or LZ4 compression and a choice of three compression levels. A ZIP archive can be encrypted with AES-256 or ZipCrypto.
 - **Share**: Import files and photos, download from a URL, share with other apps, or publish a folder over the network through a browser or WebDAV client. Save to Fila in another app’s share sheet sends files to Fila’s Inbox.
 - **Files app**: On iOS 16 or later, open Fila documents from the Files app. Files cannot use Fila’s root access.
-- **Terminal**: With the `.deb`, run an executable or open a shell in the current folder. A session as root asks for Face ID, Touch ID, or your passcode. The `.tipa` and `.ipa` have no terminal.
+- **Terminal**: With the `.deb`, run an executable or open a shell in the current folder. Choosing to run as root starts the session without a separate device authentication prompt. The `.tipa` and `.ipa` have no terminal.
 - **Inspect**: Read and change permissions, owner, flags, and extended attributes in Properties, and calculate checksums. Watch copies and downloads in Tasks, and read Fila’s own log in Settings.
 - **Deletion protection**: Fila refuses to delete, move, or replace key system folders. Everything inside them stays editable, and the daemon enforces the rule regardless of settings.
 

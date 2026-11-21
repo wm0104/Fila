@@ -6,7 +6,6 @@
     import FilaProtocol
     import Foundation
     import GhosttyTerminal
-    import LocalAuthentication
     import SnapKit
     import Then
     import UIKit
@@ -147,7 +146,6 @@
         private let requestedUser: TerminalUser
         private var terminalIdentifier: TerminalIdentifier?
         private var hasStarted = false
-        private var authentication: LAContext?
         /// When the daemon handed the descriptor back, which is the earliest moment
         /// the program can be said to have been running. Not when the screen
         /// appeared: the handshake and the spawn are Fila waiting, not the program.
@@ -203,55 +201,12 @@
         override public func viewDidAppear(_ animated: Bool) {
             super.viewDidAppear(animated)
             guard !hasStarted, !isFinished else { return }
-            // Only an explicit Run action constructs this screen. A file tap opens its viewer.
-            start()
-        }
-
-        private func start() {
+            // An explicit Run, Open Terminal, or confirmed Install action constructs
+            // this screen. A file tap opens its viewer instead.
             hasStarted = true
             statusLabel.text = String(localized: "Starting…", bundle: .module)
             canEndSession = true
-            authenticateAndOpen()
-        }
-
-        /// Authenticate each root launch, including programs and package installs.
-        /// This is a UI gate, not a replacement for the daemon's peer authentication.
-        private func authenticateAndOpen() {
-            guard requestedUser == .root else { open(); return }
-            let context = LAContext()
-            var error: NSError?
-            guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
-                if error?.domain == LAError.errorDomain, error?.code == LAError.passcodeNotSet.rawValue {
-                    open()
-                } else {
-                    authenticationFailed(error)
-                }
-                return
-            }
-            authentication = context
-            context.evaluatePolicy(
-                .deviceOwnerAuthentication,
-                localizedReason: String(localized: "Authenticate to run a terminal session as root.", bundle: .module),
-            ) { [weak self] success, error in
-                Task { @MainActor [weak self] in
-                    guard let self, !self.isFinished else { return }
-                    authentication = nil
-                    if success {
-                        open()
-                    } else {
-                        authenticationFailed(error)
-                    }
-                }
-            }
-        }
-
-        private func authenticationFailed(_ error: Error?) {
-            isFinished = true
-            canEndSession = false
-            statusLabel.text = error?.localizedDescription
-                ?? String(localized: "Authentication failed.", bundle: .module)
-            // No launch request was sent, so staged input can be released now.
-            onProcessExit?.run()
+            open()
         }
 
         override public func viewDidDisappear(_ animated: Bool) {
@@ -265,7 +220,6 @@
         }
 
         deinit {
-            authentication?.invalidate()
             // Not `teardown()`: that would need `self` on the main actor, and there
             // is no `self` left to give it. Everything it does is done here from
             // values instead — the pump releases its descriptor, and the daemon is
@@ -294,8 +248,12 @@
             let redirectsScriptInterpreter = redirectsScriptInterpreter
             let onProcessExit = onProcessExit
             Task { [weak self] in
-                while true {
-                    guard self?.isFinished == false else { return }
+                guard self?.isFinished == false else {
+                    // No request was sent, so staged input is safe to release.
+                    onProcessExit?.run()
+                    return
+                }
+                repeat {
                     do {
                         let terminal = try await link.openTerminal(
                             executable: program.executablePath,
@@ -333,7 +291,7 @@
                         await MainActor.run { self?.present(failure: error) }
                         return
                     }
-                }
+                } while self?.isFinished == false
             }
         }
 
@@ -455,11 +413,6 @@
         private func teardown() {
             guard !isFinished else { return }
             isFinished = true
-            if let authentication {
-                authentication.invalidate()
-                self.authentication = nil
-                onProcessExit?.run()
-            }
             // Closing the master revokes the terminal and the kernel hangs the
             // session up; the daemon's kill is what settles a program that ignored
             // it. Both, always — neither is reliable alone.

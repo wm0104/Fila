@@ -91,9 +91,9 @@ source; the app owns the PTY master and reads its bytes directly. The holder doe
 not proxy output and is another invocation of the installed daemon, not a new
 package executable. The XPC request still cannot supply argv or an environment.
 
-Root launches use device-owner authentication in the app when the device has a
-passcode. Cancellation prevents the launch request. This UI check supplements
-the daemon's peer authentication; it does not authenticate arbitrary XPC callers.
+Root sessions start when the user explicitly chooses a root action, without a
+separate device-owner prompt from Fila. Installing a Debian package still
+requires confirmation. Every request still passes the daemon's peer authentication.
 Account startup files remain intentional. Mutable programs run as root take the
 direct spawn path rather than waiting through login startup before execution.
 The audit record distinguishes the selected canonical target from its launcher;

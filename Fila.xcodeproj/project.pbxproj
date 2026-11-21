@@ -1336,7 +1336,6 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSAppleMusicUsageDescription = "Fila uses your music library to show songs and save the changes you request.";
-				INFOPLIST_KEY_NSFaceIDUsageDescription = "Authenticate before running a terminal session as root.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Fila uses the local network to share this device’s files and to connect to servers you add. Sharing is off until you turn it on in Settings.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -1382,7 +1381,6 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSAppleMusicUsageDescription = "Fila uses your music library to show songs and save the changes you request.";
-				INFOPLIST_KEY_NSFaceIDUsageDescription = "Authenticate before running a terminal session as root.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Fila uses the local network to share this device’s files and to connect to servers you add. Sharing is off until you turn it on in Settings.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -1925,7 +1923,6 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Fila;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-				INFOPLIST_KEY_NSFaceIDUsageDescription = "Authenticate before running a terminal session as root.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Fila uses the local network to share this device’s files and to connect to servers you add. Sharing is off until you turn it on in Settings.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -1967,7 +1964,6 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Fila;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-				INFOPLIST_KEY_NSFaceIDUsageDescription = "Authenticate before running a terminal session as root.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Fila uses the local network to share this device’s files and to connect to servers you add. Sharing is off until you turn it on in Settings.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
