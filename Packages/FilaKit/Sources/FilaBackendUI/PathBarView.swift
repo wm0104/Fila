@@ -115,7 +115,7 @@
         /// instead of a menu: a menu's rows take a tap and nothing else, and
         /// a list that is edited by a long press and a drag is not a menu.
         /// Nil leaves the crumb opening `currentMenu`.
-        var currentTap: (() -> Void)? {
+        public var currentTap: (() -> Void)? {
             didSet { applyCurrentTarget() }
         }
 

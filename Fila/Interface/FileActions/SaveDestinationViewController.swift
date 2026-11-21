@@ -157,6 +157,7 @@ final class SaveDestinationViewController: UIViewController {
         list.refreshControl?.addTarget(self, action: #selector(filesChanged), for: .valueChanged)
         list.alwaysBounceVertical = true
         view.backgroundColor = .systemBackground
+        pathBar.currentTap = { [weak self] in self?.presentFavoritesPanel() }
         pathBar.setCrumbs(PathBarView.localCrumbs(for: directory.path))
         pathBar.onSelect = { [weak self] crumb in
             self?.showAncestor(URL(fileURLWithPath: crumb.target, isDirectory: true))
@@ -169,7 +170,7 @@ final class SaveDestinationViewController: UIViewController {
             $0.contentInsetAdjustmentBehavior = .never
         }
 
-        let stack = UIStackView(arrangedSubviews: [pathBar, list])
+        let stack = UIStackView(arrangedSubviews: [list])
         stack.axis = .vertical
         view.addSubview(stack)
         if selection.name != nil || selection.message != nil {
@@ -225,6 +226,8 @@ final class SaveDestinationViewController: UIViewController {
                 make.leading.trailing.bottom.equalToSuperview()
             }
         }
+        stack.addArrangedSubview(pathBar)
+        pathBar.backgroundColor = .systemBackground
         pathBar.snp.makeConstraints { make in
             make.height.equalTo(FilaUI.minimumTapTarget)
         }
@@ -254,6 +257,32 @@ final class SaveDestinationViewController: UIViewController {
         guard availability == .ready, viewIfLoaded?.window != nil,
               navigationController?.topViewController === self else { return }
         FileSession.shared.setLastDirectory(directory.path)
+    }
+
+    private func presentFavoritesPanel() {
+        guard availability != .creatingFolder, viewIfLoaded?.window != nil,
+              navigationController?.topViewController === self, presentedViewController == nil else { return }
+        let bar = pathBar
+        let anchor = bar.currentTargetFrame.map { bar.convert($0, to: nil) }
+        let origin = bar.currentTargetFrame.flatMap { frame -> CGRect? in
+            let visible = frame.intersection(bar.bounds)
+            return visible.isNull || visible.isEmpty ? nil : bar.convert(visible, to: nil)
+        }
+        let panel = PathFavoritesPanelViewController(
+            directory: directory.path,
+            sourceRect: anchor,
+            originRect: origin,
+            dismissalRect: { [weak bar] in
+                guard let bar else { return nil }
+                bar.layoutIfNeeded()
+                return bar.currentContentFrame.map { bar.convert($0, to: nil) }
+            },
+            goToPath: { [weak self] in self?.promptGoToPath() },
+            open: { [weak self] path in
+                self?.showAncestor(URL(fileURLWithPath: path, isDirectory: true))
+            },
+        )
+        present(panel, animated: true)
     }
 
     private func refreshActions() {
