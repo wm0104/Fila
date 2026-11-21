@@ -18,8 +18,8 @@ concurrency:
 # Keep ci.yml: run_number belongs to this repository's workflow, not a branch
 # or the display name. This floor passes previously shipped builds 451/502.
 # Only this workflow's counter is covered; other workflows are not coordinated.
-# Re-runs keep the build number, but have distinct artifact names. The source
-# marketing version is retained, never automatically bumped.
+# Re-runs replace this run's artifact; consumers still require a build from
+# their own attempt. The source marketing version is never automatically bumped.
 env:
   BUILD_NUMBER_FLOOR: "1000"
 
@@ -51,6 +51,8 @@ jobs:
 
   compile:
     name: Compile full composition and verify arm64e DEB
+    outputs:
+      attempt: ${{ steps.packages.outputs.attempt }}
     if: (github.event_name == 'push' && github.ref == 'refs/heads/deb-dev') || (github.event_name == 'pull_request' && github.base_ref == 'deb-dev') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/deb-dev')
     runs-on: xcode-27
     timeout-minutes: 120
@@ -103,14 +105,16 @@ jobs:
               "Fila_${version}_dSYMs.zip" > SHA256SUMS
           )
           python3 Scripts/verify-deb-artifacts.py build/Packages
+          echo "attempt=${GITHUB_RUN_ATTEMPT:?}" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
-          name: fila-deb-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-built
+          name: fila-deb-${{ github.sha }}-${{ github.run_id }}
           path: |
             build/Packages/wiki.qaq.fila_${{ steps.packages.outputs.version }}_iphoneos-arm64e.deb
             build/Packages/Fila_${{ steps.packages.outputs.version }}_dSYMs.zip
             build/Packages/SHA256SUMS
+          overwrite: true
           if-no-files-found: error
           retention-days: 1
 
@@ -126,10 +130,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: fila-deb-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-built
+          name: fila-deb-${{ github.sha }}-${{ github.run_id }}
           path: build/Packages/
       - name: Verify exact DEB artifact set and checksums
-        run: python3 Scripts/verify-deb-artifacts.py build/Packages
+        env:
+          BUILD_ATTEMPT: ${{ needs.compile.outputs.attempt }}
+        run: |
+          set -euo pipefail
+          test "${BUILD_ATTEMPT:?}" = "${GITHUB_RUN_ATTEMPT:?}"
+          python3 Scripts/verify-deb-artifacts.py build/Packages
       - name: Install dpkg
         run: brew install dpkg
       - name: Audit every packaged image at the floor
@@ -181,21 +190,23 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: fila-deb-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-built
+          name: fila-deb-${{ github.sha }}-${{ github.run_id }}
           path: build/Packages/
       - name: Verify exact DEB artifact set and read its version
         id: packages
         shell: bash
+        env:
+          BUILD_ATTEMPT: ${{ needs.compile.outputs.attempt }}
         run: |
           set -euo pipefail
+          test "${BUILD_ATTEMPT:?}" = "${GITHUB_RUN_ATTEMPT:?}"
           version="$(python3 Scripts/verify-deb-artifacts.py build/Packages)"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+      # Replace the checked transfer bundle only after every required gate passes.
       - uses: actions/upload-artifact@v4
         with:
-          name: fila-deb-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-verified
-          path: |
-            build/Packages/wiki.qaq.fila_${{ steps.packages.outputs.version }}_iphoneos-arm64e.deb
-            build/Packages/Fila_${{ steps.packages.outputs.version }}_dSYMs.zip
-            build/Packages/SHA256SUMS
+          name: fila-deb-${{ github.sha }}-${{ github.run_id }}
+          path: build/Packages/wiki.qaq.fila_${{ steps.packages.outputs.version }}_iphoneos-arm64e.deb
+          overwrite: true
           if-no-files-found: error
           retention-days: 30

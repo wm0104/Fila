@@ -22,7 +22,7 @@ WORKFLOWS = ROOT / '.github/workflows'
 GUARD = ("(github.event_name == 'push' && github.ref == 'refs/heads/deb-dev') || "
          "(github.event_name == 'pull_request' && github.base_ref == 'deb-dev') || "
          "(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/deb-dev')")
-PREFIX = 'fila-deb-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}'
+PREFIX = 'fila-deb-${{ github.sha }}-${{ github.run_id }}'
 VERIFY = 'python3 Scripts/verify-deb-artifacts.py build/Packages'
 UPLOAD_PATHS = '\n'.join([
     'build/Packages/wiki.qaq.fila_${{ steps.packages.outputs.version }}_iphoneos-arm64e.deb',
@@ -89,10 +89,22 @@ def contract(ci, release, pages):
                       'FLAVOR=rootless', 'iphoneos-arm64.deb']:
         require(forbidden not in text, f'forbidden recipe: {forbidden}')
     require(VERIFY in text, 'validate before upload')
-    require(VERIFY in runs(jobs['floor-audit']), 'floor-audit: artifact verification')
+    require(jobs['compile'].get('outputs') == {'attempt': '${{ steps.packages.outputs.attempt }}'},
+            'compile: expose checked build attempt')
+    require('echo "attempt=${GITHUB_RUN_ATTEMPT:?}" >> "$GITHUB_OUTPUT"' in text,
+            'compile: record current attempt')
+    attempt_guard = 'test "${BUILD_ATTEMPT:?}" = "${GITHUB_RUN_ATTEMPT:?}"'
+    floor_check = next(step for step in jobs['floor-audit']['steps']
+                       if step.get('name') == 'Verify exact DEB artifact set and checksums')
+    require(floor_check.get('env') == {'BUILD_ATTEMPT': '${{ needs.compile.outputs.attempt }}'},
+            'floor-audit: checked build attempt')
+    require(floor_check['run'].strip() == 'set -euo pipefail\n' + attempt_guard + '\n' + VERIFY,
+            'floor-audit: artifact verification and attempt isolation')
     collection = next(step for step in jobs['packages']['steps'] if step.get('id') == 'packages')
+    require(collection.get('env') == {'BUILD_ATTEMPT': '${{ needs.compile.outputs.attempt }}'},
+            'packages: checked build attempt')
     require(collection['run'].strip() == (
-        'set -euo pipefail\n'
+        'set -euo pipefail\n' + attempt_guard + '\n'
         'version="$(' + VERIFY + ')"\n'
         'echo "version=$version" >> "$GITHUB_OUTPUT"'), 'packages: verified version output')
     audit = '\n'.join(runs(jobs['floor-audit']))
@@ -104,13 +116,14 @@ def contract(ci, release, pages):
     for name in jobs:
         for step in jobs[name]['steps']:
             if step.get('uses') == 'actions/download-artifact@v4':
-                require(step['with'] == {'name': PREFIX + '-built', 'path': 'build/Packages/'},
+                require(step['with'] == {'name': PREFIX, 'path': 'build/Packages/'},
                         f'{name}: exact current-run download, never a SHA wildcard or another run')
             if step.get('uses') == 'actions/upload-artifact@v4':
                 options = step['with']
-                suffix = '-built' if name == 'compile' else '-verified'
-                require(options['name'] == PREFIX + suffix, 'typed run/attempt artifact name')
-                require(options['path'].strip() == UPLOAD_PATHS, 'closed upload allowlist')
+                require(options['name'] == PREFIX, 'one run/attempt artifact name')
+                expected_paths = UPLOAD_PATHS if name == 'compile' else UPLOAD_PATHS.splitlines()[0]
+                require(options['path'].strip() == expected_paths, 'closed upload allowlist')
+                require(options.get('overwrite') is True, 'replace instead of accumulating artifacts')
                 require(options['if-no-files-found'] == 'error', 'missing artifacts must fail')
                 require(options['retention-days'] == (1 if name == 'compile' else 30), 'retention')
     require(sum(step.get('uses') == 'actions/download-artifact@v4'
@@ -156,6 +169,45 @@ class WorkflowIsolationTests(unittest.TestCase):
     def test_workflow_contract(self):
         contract(*self.workflows)
 
+    def test_successful_run_exposes_one_artifact_containing_only_arm64e_deb(self):
+        jobs = self.workflows[0]['jobs']
+        built = next(step for step in jobs['compile']['steps']
+                     if step.get('uses') == 'actions/upload-artifact@v4')['with']
+        final = next(step for step in jobs['packages']['steps']
+                     if step.get('uses') == 'actions/upload-artifact@v4')['with']
+        self.assertEqual(built['name'], PREFIX)
+        self.assertEqual(final['name'], built['name'])
+        self.assertIs(final.get('overwrite'), True)
+        self.assertIs(built.get('overwrite'), True)
+        self.assertEqual(final['path'].strip(), UPLOAD_PATHS.splitlines()[0])
+        for job in jobs.values():
+            for step in job['steps']:
+                if step.get('uses') == 'actions/download-artifact@v4':
+                    self.assertEqual(step['with']['name'], built['name'])
+
+    def test_reruns_keep_one_name_and_reject_a_previous_build_attempt(self):
+        jobs = self.workflows[0]['jobs']
+        upload = jobs['compile']['steps'][-1]['with']
+        self.assertNotIn('github.run_attempt', upload['name'])
+        self.assertIs(upload.get('overwrite'), True)
+        for job_name, step_name in [
+            ('floor-audit', 'Verify exact DEB artifact set and checksums'),
+            ('packages', 'Verify exact DEB artifact set and read its version'),
+        ]:
+            step = next(s for s in jobs[job_name]['steps'] if s.get('name') == step_name)
+            self.assertEqual(step['env']['BUILD_ATTEMPT'], '${{ needs.compile.outputs.attempt }}')
+            for attempt, current, accepted in [('1', '1', True), ('2', '2', True),
+                                                ('1', '2', False), ('', '2', False)]:
+                with self.subTest(job=job_name, attempt=attempt, current=current):
+                    environment = os.environ.copy()
+                    environment.update(BUILD_ATTEMPT=attempt, GITHUB_RUN_ATTEMPT=current,
+                                       GITHUB_OUTPUT=os.devnull)
+                    stub = 'python3() { echo VERIFIED >&2; echo 0.8.4-4; };\n'
+                    result = subprocess.run(['bash', '-c', stub + step['run']],
+                                            env=environment, capture_output=True, text=True, timeout=10)
+                    self.assertEqual(result.returncode == 0, accepted)
+                    self.assertEqual('VERIFIED' in result.stderr, accepted)
+
     def test_push_pr_and_dispatch_truth_table(self):
         for event in ['push', 'pull_request', 'workflow_dispatch', 'release']:
             for branch in ['deb-dev', 'ipa-dev', 'test', 'main']:
@@ -197,6 +249,19 @@ class WorkflowIsolationTests(unittest.TestCase):
                 run=c['jobs']['floor-audit']['steps'][-1]['run'].replace('${#debs[@]} != 1', '${#debs[@]} != 2')),
             lambda c, r, p: c['jobs']['floor-audit']['steps'][1]['with'].update(name='fila-${{ github.sha }}-*'),
             lambda c, r, p: c['jobs']['compile']['steps'][-1]['with'].update(path='build/Packages/'),
+            lambda c, r, p: c['jobs']['packages']['steps'][-1]['with'].pop('overwrite'),
+            lambda c, r, p: c['jobs']['packages']['steps'][-1]['with'].update(overwrite='true'),
+            lambda c, r, p: c['jobs']['compile']['steps'][-1]['with'].update(overwrite=False),
+            lambda c, r, p: c['jobs']['compile']['outputs'].clear(),
+            lambda c, r, p: c['jobs']['floor-audit']['steps'][2]['env'].clear(),
+            lambda c, r, p: c['jobs']['packages']['steps'][2].update(
+                run=c['jobs']['packages']['steps'][2]['run'].replace(
+                    'test "${BUILD_ATTEMPT:?}" = "${GITHUB_RUN_ATTEMPT:?}"', 'true')),
+            lambda c, r, p: c['jobs']['packages']['steps'][-1]['with'].update(name=PREFIX + '-verified'),
+            lambda c, r, p: c['jobs']['packages']['steps'][-1]['with'].update(path=UPLOAD_PATHS),
+            lambda c, r, p: c['jobs']['packages']['steps'][-1]['with'].update(path='build/Packages/*.deb'),
+            lambda c, r, p: c['jobs']['packages']['steps'][2].update(
+                run='echo "version=0.8.4-4" >> "$GITHUB_OUTPUT"'),
             lambda c, r, p: r['on'].update(push={'tags': ['v*']}),
             lambda c, r, p: r['jobs']['publish'].update({'if': 'true'}),
             lambda c, r, p: p['jobs']['deploy'].update({'if': 'true'}),
